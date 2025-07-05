@@ -77,8 +77,24 @@
   /**
    * PART 4: UI注入逻辑
    */
-    function createAndInjectButton() {
-      if (document.getElementById('export-markdown-btn')) return;
+    function checkAndInjectButton() {
+      const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
+      const currentUrl = window.location.href;
+      const existingButton = document.getElementById('export-markdown-btn');
+
+      if (!targetUrlPattern.test(currentUrl)) {
+        if (existingButton) {
+          existingButton.remove();
+          console.log('%c当前URL不匹配，已移除复制按钮。', 'color: gray;');
+        }
+        return;
+      }
+
+      if (existingButton) {
+        // Button already exists and URL matches, no need to re-inject
+        return;
+      }
+
       const injectionInterval = setInterval(() => {
         const toolbar = document.querySelector('ms-toolbar .toolbar-container');
         if (toolbar) {
@@ -93,13 +109,29 @@
             exportButton.addEventListener('click', exportToMarkdown);
             const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
             if (moreButton) toolbar.insertBefore(exportButton, moreButton);
-            else toolbar.appendChild(exportButton); 
+            else toolbar.appendChild(exportButton);
+            console.log('%c复制按钮已注入。', 'color: green;');
         }
       }, 500);
     }
+
+    // Initial check and injection
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createAndInjectButton);
+      document.addEventListener('DOMContentLoaded', checkAndInjectButton);
     } else {
-      createAndInjectButton();
+      checkAndInjectButton();
     }
+
+    // Monitor URL changes for single-page applications
+    let lastUrl = window.location.href;
+    const observer = new MutationObserver(() => {
+      if (window.location.href !== lastUrl) {
+        lastUrl = window.location.href;
+        console.log('%cURL已改变，重新检查按钮注入。', 'color: blue;');
+        checkAndInjectButton();
+      }
+    });
+
+    // Start observing the document body for changes (including URL changes)
+    observer.observe(document.body, { childList: true, subtree: true });
 })();
