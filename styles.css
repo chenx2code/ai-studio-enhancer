@@ -1,0 +1,31 @@
+/* 我们自定义按钮的样式 */
+#export-markdown-btn {
+    /* 使用和旁边按钮一样的颜色 */
+    color: var(--mdc-icon-button-icon-color, #444746); 
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-sizing: border-box;
+    border: none;
+    outline: none;
+    background-color: transparent;
+    cursor: pointer;
+    user-select: none;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+}
+
+#export-markdown-btn:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 按钮内部的SVG图标样式 */
+#export-markdown-btn svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+}
