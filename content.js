@@ -104,7 +104,7 @@
             exportButton.setAttribute('title', '复制对话为Markdown');
             const icon = document.createElement('span');
             icon.className = 'material-symbols-outlined';
-            icon.innerText = 'data_object';
+            icon.innerText = 'markdown_copy';
             exportButton.appendChild(icon);
             exportButton.addEventListener('click', exportToMarkdown);
             const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
