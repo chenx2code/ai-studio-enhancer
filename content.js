@@ -2,7 +2,7 @@
   'use strict';
 
   let conversationHistory = null;
-  let promptTitle = "未命名对话";
+  let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
 
   /**
    * PART 1: 脚本注射器
@@ -58,7 +58,7 @@
    */
   function exportToMarkdown() {
     if (!conversationHistory) {
-      alert("未能获取到对话数据源！");
+      alert(chrome.i18n.getMessage('errorNoDataSource'));
       return;
     }
     let markdownOutput = `# ${promptTitle}\n\n`;
@@ -71,7 +71,7 @@
         else if (role === 'model' && finalContent) markdownOutput += `${finalContent}\n\n---\n\n`;
     });
     navigator.clipboard.writeText(markdownOutput.trim());
-    alert("对话已成功复制！");
+    alert(chrome.i18n.getMessage('successCopied'));
   }
 
   /**
@@ -101,7 +101,7 @@
             clearInterval(injectionInterval);
             const exportButton = document.createElement('button');
             exportButton.id = 'export-markdown-btn';
-            exportButton.setAttribute('title', '复制对话为Markdown');
+            exportButton.setAttribute('title', chrome.i18n.getMessage('tooltipCopyMarkdown'));
             const icon = document.createElement('span');
             icon.className = 'material-symbols-outlined';
             icon.innerText = 'markdown_copy';

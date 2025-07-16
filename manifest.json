@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Google AI Studio Chat Markdown Copier",
+  "name": "__MSG_extensionName__",
   "version": "1.0",
-  "description": "一键将 Google AI Studio 完整对话复制为结构化的 Markdown 格式，方便保存和分享。",
+  "default_locale": "en",
+  "description": "__MSG_extensionDescription__",
   "permissions": [
     "clipboardWrite"
   ],

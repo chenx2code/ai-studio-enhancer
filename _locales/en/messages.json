@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Google AI Studio Markdown Copier",
+    "description": "The name of the extension."
+  },
+  "extensionDescription": {
+    "message": "One-click copy of the complete Google AI Studio conversation into structured Markdown format.",
+    "description": "The description of the extension."
+  },
+  "tooltipCopyMarkdown": {
+    "message": "Copy conversation as Markdown",
+    "description": "The tooltip text for the copy button."
+  },
+  "promptTitleDefault": {
+    "message": "Untitled Conversation",
+    "description": "The default title for a conversation if it's not named."
+  },
+  "errorNoDataSource": {
+    "message": "Failed to get conversation data source!",
+    "description": "Error message when the script cannot find the conversation data."
+  },
+  "successCopied": {
+    "message": "Conversation copied successfully!",
+    "description": "Success message after the conversation is copied to the clipboard."
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "extensionName": {
+    "message": "Google AI Studio Markdown Copier",
+    "description": "插件的名称。"
+  },
+  "extensionDescription": {
+    "message": "一键将 Google AI Studio 完整对话复制为结构化的 Markdown 格式，方便保存和分享。",
+    "description": "插件的描述。"
+  },
+  "tooltipCopyMarkdown": {
+    "message": "复制对话为Markdown",
+    "description": "复制按钮的工具提示文本。"
+  },
+  "promptTitleDefault": {
+    "message": "未命名对话",
+    "description": "如果对话未命名，则使用此默认标题。"
+  },
+  "errorNoDataSource": {
+    "message": "未能获取到对话数据源！",
+    "description": "当脚本找不到对话数据时显示的错误消息。"
+  },
+  "successCopied": {
+    "message": "对话已成功复制！",
+    "description": "对话成功复制到剪贴板后显示的消息。"
+  }
+}
