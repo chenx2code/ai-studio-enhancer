@@ -95,13 +95,14 @@
         return;
       }
 
+      const tooltipText = chrome.i18n.getMessage('tooltipCopyMarkdown');
       const injectionInterval = setInterval(() => {
         const toolbar = document.querySelector('ms-toolbar .toolbar-container');
         if (toolbar) {
             clearInterval(injectionInterval);
             const exportButton = document.createElement('button');
             exportButton.id = 'export-markdown-btn';
-            exportButton.setAttribute('title', chrome.i18n.getMessage('tooltipCopyMarkdown'));
+            exportButton.setAttribute('title', tooltipText);
             const icon = document.createElement('span');
             icon.className = 'material-symbols-outlined';
             icon.innerText = 'markdown_copy';
