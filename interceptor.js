@@ -7,7 +7,6 @@
     'UpdatePrompt'
   ];
 
-  console.log('%c关键词拦截器已启动。', 'color: green; font-weight: bold;');
 
   // 检查一个URL是否包含任何一个目标关键词
   function getTargetKeyword(url) {
@@ -28,7 +27,7 @@
     this.addEventListener('load', function() {
       const matchedKeyword = getTargetKeyword(this._url);
       if (this.readyState === 4 && matchedKeyword) {
-         console.log(`%c拦截到目标 XHR 请求: ${this._url}`, 'color: blue; font-weight: bold;');
+         
         try {
           const data = JSON.parse(this.responseText);
           window.postMessage({ type: 'FROM_INTERCEPTOR', payload: data, apiKeyword: matchedKeyword }, '*');

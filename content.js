@@ -11,14 +11,12 @@
   s.src = chrome.runtime.getURL('interceptor.js');
   s.onload = function() { this.remove(); };
   (document.head || document.documentElement).appendChild(s);
-  console.log('%c已将 interceptor.js 注入到页面。', 'color: orange;');
 
   /**
    * PART 2: 消息监听器
    */
   window.addEventListener('message', function(event) {
     if (event.source === window && event.data && event.data.type === 'FROM_INTERCEPTOR') {
-      console.log('%c已收到来自拦截器的数据包。', 'color: purple; font-weight: bold;');
       
       const data = event.data.payload;
       const apiKeyword = event.data.apiKeyword;
@@ -28,11 +26,9 @@
         let promptData = null;
 
         if (apiKeyword === 'ResolveDriveResource') {
-          console.log('按 ResolveDriveResource 结构解析...');
           turns = data?.[0]?.[13]?.[0];
           promptData = data?.[0]?.[4];
         } else if (apiKeyword === 'UpdatePrompt') {
-          console.log('按 UpdatePrompt 结构解析...');
           turns = data?.[13]?.[0];
           promptData = data?.[4];
         }
@@ -85,7 +81,6 @@
       if (!targetUrlPattern.test(currentUrl)) {
         if (existingButton) {
           existingButton.remove();
-          console.log('%c当前URL不匹配，已移除复制按钮。', 'color: gray;');
         }
         return;
       }
@@ -111,7 +106,6 @@
             const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
             if (moreButton) toolbar.insertBefore(exportButton, moreButton);
             else toolbar.appendChild(exportButton);
-            console.log('%c复制按钮已注入。', 'color: green;');
         }
       }, 500);
     }
@@ -128,7 +122,7 @@
     const observer = new MutationObserver(() => {
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
-        console.log('%cURL已改变，重新检查按钮注入。', 'color: blue;');
+        
         checkAndInjectButton();
       }
     });
