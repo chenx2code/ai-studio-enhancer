@@ -16,14 +16,20 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icon.png", "interceptor.js"], 
+      "resources": ["interceptor.js"], 
       "matches": ["https://aistudio.google.com/*"]
     }
   ],
-  "action": { "default_icon": "icon.png" },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
   "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
-    "128": "icon.png"
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }
