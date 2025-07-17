@@ -3,6 +3,7 @@
 
   // 定义目标API的核心关键词
   const TARGET_KEYWORDS = [
+    'CreatePrompt',
     'ResolveDriveResource',
     'UpdatePrompt'
   ];

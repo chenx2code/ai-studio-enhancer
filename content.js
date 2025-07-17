@@ -28,14 +28,14 @@
         if (apiKeyword === 'ResolveDriveResource') {
           turns = data?.[0]?.[13]?.[0];
           promptData = data?.[0]?.[4];
-        } else if (apiKeyword === 'UpdatePrompt') {
+        } else if (apiKeyword === 'UpdatePrompt' || apiKeyword === 'CreatePrompt') {
           turns = data?.[13]?.[0];
           promptData = data?.[4];
         }
 
         // 提取对话历史
         if (turns && Array.isArray(turns)) {
-           conversationHistory = turns;
+          conversationHistory = turns;
         }
 
         // 提取标题
