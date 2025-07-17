@@ -61,15 +61,20 @@
 2.  打开任意一个 Google AI Studio 的对话页面 (例如 `https://aistudio.google.com/prompts/...`)。
 3.  在页面顶部的工具栏中（靠近“保存”和“运行”按钮的位置），您应该能看到一个新增的 **Markdown 图标**。
 4.  将鼠标悬停在该图标上，会显示提示：“复制对话为Markdown”。
-5.  点击该按钮。
-6.  浏览器会弹窗提示“对话已成功复制！”。
-7.  现在，Markdown 格式的对话内容已经在您的剪贴板里了。您可以将其粘贴到任何文本编辑器（如 Typora, VS Code）、笔记软件或需要使用该内容的地方。
+5.  与模型对话，等待对话自动存储至 Google Drive。
+6.  点击复制按钮。
+7.  浏览器会弹窗提示“对话已成功复制！”。
+8.  现在，Markdown 格式的对话内容已经在您的剪贴板里了。您可以将其粘贴到任何文本编辑器（如 Typora, VS Code）、笔记软件或需要使用该内容的地方。
 
 ![screenshot-1](./assets/screenshot-1.png)
 
 ![screenshot-2](./assets/screenshot-2.png)
 
 ![screenshot-3](./assets/screenshot-3.png)
+
+![screenshot-3](./assets/screenshot-4.png)
+
+![screenshot-3](./assets/screenshot-5.png)
 
 ---
 
