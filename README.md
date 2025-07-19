@@ -34,24 +34,40 @@
 
 ---
 
-## 🚀 安装方法 (开发者模式加载)
+## 🚀 安装方法
 
-由于此扩展目前未在 Chrome Web Store 上架，您需要通过开发者模式手动加载：
+此扩展目前未在 Chrome Web Store 上架，您需要通过开发者模式手动加载。
 
-1.  **获取项目文件：**
-    *   如果您尚未拥有项目文件，请通过 `git clone` 或直接下载 ZIP 的方式从代码仓库获取所有文件。
-    *   将所有文件保存在一个你方便找到的文件夹中 (例如 `google-ai-studio-markdown-copier`)。
+### 方法一：从 Release 安装（推荐）
 
-2.  **在 Chrome 中加载扩展：**
+1.  **下载 ZIP 包：**
+    *   访问本项目的 [Releases 页面](https://github.com/chenx2code/google-ai-studio-markdown-copier/releases)。
+    *   找到最新的版本，点击下载名为 `google-ai-studio-markdown-copier-vX.X.X.zip` 的文件。
+
+2.  **解压文件：**
+    *   将下载的 `.zip` 文件解压到一个你方便找到的永久文件夹中。
+
+3.  **在 Chrome 中加载扩展：**
     *   打开 Chrome 浏览器。
     *   在地址栏输入 `chrome://extensions` 并按回车键，进入扩展管理页面。
     *   **开启“开发者模式”：** 确保页面右上角的“开发者模式 (Developer mode)”开关已打开。
     *   **加载扩展：** 点击页面左上角出现的“加载已解压的扩展程序 (Load unpacked)”按钮。
-    *   **选择文件夹：** 在弹出的文件选择窗口中，找到并选择你在第 1 步中**存放项目文件的那个根文件夹** (确保它包含了 `manifest.json`)。
+    *   **选择文件夹：** 在弹出的文件选择窗口中，选择你在上一步**解压出来的那个文件夹** (确保它包含了 `manifest.json`)。
     *   点击“选择文件夹 (Select Folder)”。
 
-3.  **完成：**
+4.  **完成：**
     *   "Google AI Studio Markdown Copier" 扩展现在应该会出现在你的扩展列表中，并已默认启用。
+
+### 方法二：从源代码加载（开发者）
+
+此方法适用于希望获取最新代码或进行二次开发的开发者。
+
+1.  **获取项目文件：**
+    *   通过 `git clone https://github.com/chenx2code/google-ai-studio-markdown-copier.git` 克隆本仓库。
+    *   将所有文件保存在一个你方便找到的文件夹中。
+
+2.  **加载扩展：**
+    *   按照“方法一”中的第 3 步和第 4 步，在 Chrome 中加载包含源代码的根文件夹。
 
 ---
 
