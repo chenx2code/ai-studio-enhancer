@@ -1,86 +1,88 @@
-# Google AI Studio Markdown Copier Chrome 扩展
+[阅读中文版本](./README_zh-CN.md)
 
-[![版本](https://img.shields.io/badge/版本-1.0-blue.svg)](manifest.json)  [![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
+# Google AI Studio Markdown Copier Chrome Extension
 
-这是一个 Chrome 扩展程序，旨在简化从 Google AI Studio 导出对话内容的流程。
+[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](manifest.json) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-它会在 AI Studio 对话页面的工具栏中添加一个醒目的 **“复制对话为Markdown”** 按钮。点击该按钮后，扩展会自动捕获当前对话的完整历史记录，将其格式化为结构清晰的 **Markdown** 格式，并直接复制到用户的剪贴板中。
+This is a Chrome extension designed to simplify the process of exporting conversation content from Google AI Studio.
 
-这对于需要将对话内容用于以下场景的用户非常方便：
+It adds a prominent **"Copy conversation as Markdown"** button to the toolbar on the AI Studio conversation page. After clicking the button, the extension automatically captures the complete history of the current conversation, formats it into clean, structured **Markdown**, and copies it directly to the user's clipboard.
 
-*   保存和归档重要的对话记录。
-*   在技术文档、博客文章或笔记中引用 AI 的回答。
-*   与他人分享完整的交互过程。
-*   将对话导入其他工具进行分析或处理。
+This is very convenient for users who need to use the conversation content for:
 
-##  :exclamation: 重要前提：启用自动保存
+*   Saving and archiving important conversation records.
+*   Quoting AI responses in technical documents, blog posts, or notes.
+*   Sharing the complete interaction process with others.
+*   Importing conversations into other tools for analysis or processing.
 
-**请注意：** 为了确保本扩展能够正常工作，您 **必须** 在 Google AI Studio 的设置中启用 **“自动保存”（Autosave）** 功能。
+## :exclamation: Important Prerequisite: Enable Autosave
 
-本扩展依赖于 AI Studio 自动保存时触发的内部数据更新来捕获最完整的对话历史。如果未开启自动保存，扩展将无法获取实时对话内容，导致复制失败或内容不完整。
+**Please note:** To ensure this extension works correctly, you **must** enable the **"Autosave"** feature in your Google AI Studio settings.
+
+This extension relies on the internal data updates triggered by AI Studio's autosave to capture the most complete conversation history. If autosave is not enabled, the extension will not be able to retrieve real-time conversation content, leading to failed or incomplete copies.
 
 ![screenshot-0](./assets/screenshot-0.png)
 
 ---
 
-## ✨ 主要功能
+## ✨ Main Features
 
-*   **一键复制:** 在 Google AI Studio 对话页面的工具栏上添加一个易于操作的“复制对话为Markdown”按钮。
-*   **结构化 Markdown:** 自动将对话转换为标准的 Markdown 格式：
-    *   对话标题作为一级标题 (`#`)。
-    *   用户的每个提示 (Prompt) 作为二级标题 (`##`)。
-    *   模型的每个思考过程和最终回答作为正文，同时保证原有的 Markdown 格式。
-    *   使用 `---` 分隔线区分不同的对话轮次。
-
----
-
-## 🚀 安装方法
-
-此扩展目前未在 Chrome Web Store 上架，您需要通过开发者模式手动加载。
-
-### 方法一：从 Release 安装（推荐）
-
-1.  **下载 ZIP 包：**
-    *   访问本项目的 [Releases 页面](https://github.com/chenx2code/google-ai-studio-markdown-copier/releases)。
-    *   找到最新的版本，点击下载名为 `google-ai-studio-markdown-copier-vX.X.X.zip` 的文件。
-
-2.  **解压文件：**
-    *   将下载的 `.zip` 文件解压到一个你方便找到的永久文件夹中。
-
-3.  **在 Chrome 中加载扩展：**
-    *   打开 Chrome 浏览器。
-    *   在地址栏输入 `chrome://extensions` 并按回车键，进入扩展管理页面。
-    *   **开启“开发者模式”：** 确保页面右上角的“开发者模式 (Developer mode)”开关已打开。
-    *   **加载扩展：** 点击页面左上角出现的“加载已解压的扩展程序 (Load unpacked)”按钮。
-    *   **选择文件夹：** 在弹出的文件选择窗口中，选择你在上一步**解压出来的那个文件夹** (确保它包含了 `manifest.json`)。
-    *   点击“选择文件夹 (Select Folder)”。
-
-4.  **完成：**
-    *   "Google AI Studio Markdown Copier" 扩展现在应该会出现在你的扩展列表中，并已默认启用。
-
-### 方法二：从源代码加载（开发者）
-
-此方法适用于希望获取最新代码或进行二次开发的开发者。
-
-1.  **获取项目文件：**
-    *   通过 `git clone https://github.com/chenx2code/google-ai-studio-markdown-copier.git` 克隆本仓库。
-    *   将所有文件保存在一个你方便找到的文件夹中。
-
-2.  **加载扩展：**
-    *   按照“方法一”中的第 3 步和第 4 步，在 Chrome 中加载包含源代码的根文件夹。
+*   **One-Click Copy:** Adds an easy-to-use "Copy conversation as Markdown" button to the Google AI Studio conversation page toolbar.
+*   **Structured Markdown:** Automatically converts the conversation into standard Markdown format:
+    *   The conversation title becomes a level-1 heading (`#`).
+    *   Each user prompt becomes a level-2 heading (`##`).
+    *   The model's thought process and final answer are included as body text, preserving the original Markdown formatting.
+    *   A `---` separator is used to distinguish between different conversation turns.
 
 ---
 
-## 💡 如何使用
+## 🚀 Installation Methods
 
-1.  确保扩展已按照上述步骤成功安装并启用。
-2.  打开任意一个 Google AI Studio 的对话页面 (例如 `https://aistudio.google.com/prompts/...`)。
-3.  在页面顶部的工具栏中（靠近“保存”和“运行”按钮的位置），您应该能看到一个新增的 **Markdown 图标**。
-4.  将鼠标悬停在该图标上，会显示提示：“复制对话为Markdown”。
-5.  与模型对话，等待对话自动存储至 Google Drive。
-6.  点击复制按钮。
-7.  浏览器会弹窗提示“对话已成功复制！”。
-8.  现在，Markdown 格式的对话内容已经在您的剪贴板里了。您可以将其粘贴到任何文本编辑器（如 Typora, VS Code）、笔记软件或需要使用该内容的地方。
+This extension is not yet available on the Chrome Web Store. You need to load it manually via Developer Mode.
+
+### Method 1: Install from Release (Recommended)
+
+1.  **Download the ZIP Package:**
+    *   Visit the project's [Releases Page](https://github.com/FIGHT1337/Google-AI-Studio-Markdown-Copier/releases).
+    *   Find the latest release and download the file named `google-ai-studio-markdown-copier-vX.X.X.zip`.
+
+2.  **Unzip the File:**
+    *   Extract the downloaded `.zip` file into a permanent, easily accessible folder.
+
+3.  **Load the Extension in Chrome:**
+    *   Open the Chrome browser.
+    *   Navigate to `chrome://extensions` by typing it in the address bar and pressing Enter.
+    *   **Enable Developer Mode:** Ensure the "Developer mode" switch in the top-right corner is turned on.
+    *   **Load Unpacked:** Click the "Load unpacked" button that appears on the top-left.
+    *   **Select the Folder:** In the file selection window, choose the **folder you extracted in the previous step** (make sure it contains `manifest.json`).
+    *   Click "Select Folder".
+
+4.  **Done:**
+    *   The "Google AI Studio Markdown Copier" extension should now appear in your extensions list and be enabled by default.
+
+### Method 2: Load from Source (For Developers)
+
+This method is for developers who want the latest code or wish to contribute.
+
+1.  **Get the Project Files:**
+    *   Clone this repository using `git clone https://github.com/FIGHT1337/Google-AI-Studio-Markdown-Copier.git`.
+    *   Save all files in a convenient folder.
+
+2.  **Load the Extension:**
+    *   Follow steps 3 and 4 from "Method 1" to load the root folder containing the source code in Chrome.
+
+---
+
+## 💡 How to Use
+
+1.  Ensure the extension is installed and enabled as described above.
+2.  Open any Google AI Studio conversation page (e.g., `https://aistudio.google.com/prompts/...`).
+3.  In the toolbar at the top of the page (near the "Save" and "Run" buttons), you should see a new **Markdown icon**.
+4.  Hover over the icon to see the tooltip: "Copy conversation as Markdown".
+5.  Interact with the model and wait for the conversation to be automatically saved to Google Drive.
+6.  Click the copy button.
+7.  A browser alert will confirm, "Conversation copied successfully!".
+8.  The Markdown-formatted conversation is now on your clipboard. You can paste it into any text editor (like Typora, VS Code), note-taking software, or anywhere else you need it.
 
 ![screenshot-1](./assets/screenshot-1.png)
 
@@ -88,27 +90,27 @@
 
 ![screenshot-3](./assets/screenshot-3.png)
 
-![screenshot-3](./assets/screenshot-4.png)
+![screenshot-4](./assets/screenshot-4.png)
 
-![screenshot-3](./assets/screenshot-5.png)
-
----
-
-## ⚠️ 已知问题与限制
-
-*   **依赖 Google AI Studio 页面结构和API:** 本扩展强依赖于 Google AI Studio 网站当前的 HTML 结构、CSS 类名以及其内部网络请求的响应数据结构。如果 Google 未来进行大规模的网站改版，可能会导致选择器或数据解析逻辑失效，进而使扩展无法正常工作。届时需要更新代码。
+![screenshot-5](./assets/screenshot-5.png)
 
 ---
 
-## 🤝 贡献
+## ⚠️ Known Issues & Limitations
 
-如果您发现任何 Bug、有改进建议或想要添加新功能，欢迎通过以下方式贡献：
-
-*   提交 **Issue** 报告问题或提出建议。
-*   创建 **Pull Request** 提交您的代码更改。
+*   **Dependency on Google AI Studio's Structure and API:** This extension is highly dependent on the current HTML structure, CSS class names, and internal network request response data structures of the Google AI Studio website. If Google undertakes a major site redesign in the future, it could break the selectors or data parsing logic, causing the extension to fail. This would require a code update.
 
 ---
 
-## 📄 许可证
+## 🤝 Contributing
 
-本项目根据 [MIT 许可证](LICENSE) 的条款进行许可。
+If you find any bugs, have suggestions for improvements, or want to add new features, you are welcome to contribute by:
+
+*   Submitting an **Issue** to report problems or make suggestions.
+*   Creating a **Pull Request** to submit your code changes.
+
+---
+
+## 📄 License
+
+This project is licensed under the terms of the [MIT License](LICENSE).
