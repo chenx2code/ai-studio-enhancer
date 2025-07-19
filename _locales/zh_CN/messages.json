@@ -8,7 +8,7 @@
     "description": "插件的描述。"
   },
   "tooltipCopyMarkdown": {
-    "message": "复制对话为Markdown",
+    "message": "复制对话为 Markdown 格式",
     "description": "复制按钮的工具提示文本。"
   },
   "promptTitleDefault": {

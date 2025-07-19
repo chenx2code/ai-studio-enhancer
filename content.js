@@ -97,11 +97,21 @@
             clearInterval(injectionInterval);
             const exportButton = document.createElement('button');
             exportButton.id = 'export-markdown-btn';
-            exportButton.setAttribute('title', tooltipText);
+            exportButton.setAttribute('aria-label', tooltipText);
+            exportButton.setAttribute('aria-describedby', 'export-markdown-tooltip');
+
             const icon = document.createElement('span');
             icon.className = 'material-symbols-outlined';
             icon.innerText = 'markdown_copy';
+            
+            const tooltip = document.createElement('span');
+            tooltip.id = 'export-markdown-tooltip';
+            tooltip.className = 'custom-tooltip-text';
+            tooltip.setAttribute('role', 'tooltip');
+            tooltip.innerText = tooltipText;
+            
             exportButton.appendChild(icon);
+            exportButton.appendChild(tooltip);
             exportButton.addEventListener('click', exportToMarkdown);
             const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
             if (moreButton) toolbar.insertBefore(exportButton, moreButton);
