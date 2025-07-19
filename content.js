@@ -66,8 +66,11 @@
         if (role === 'user' && content) markdownOutput += `## ${content}\n\n`;
         else if (role === 'model' && finalContent) markdownOutput += `${finalContent}\n\n---\n\n`;
     });
-    navigator.clipboard.writeText(markdownOutput.trim());
-    alert(chrome.i18n.getMessage('successCopied'));
+    navigator.clipboard.writeText(markdownOutput.trim()).then(() => {
+      alert(chrome.i18n.getMessage('successCopied'));
+    }).catch(err => {
+      console.error('Failed to copy text: ', err);
+    });
   }
 
   /**
@@ -120,23 +123,23 @@
       }, 500);
     }
 
-    // Initial check and injection
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', checkAndInjectButton);
-    } else {
+    function initialize() {
       checkAndInjectButton();
+
+      // Monitor URL changes for single-page applications
+      let lastUrl = window.location.href;
+      const observer = new MutationObserver(() => {
+        if (window.location.href !== lastUrl) {
+          lastUrl = window.location.href;
+          checkAndInjectButton();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    // Monitor URL changes for single-page applications
-    let lastUrl = window.location.href;
-    const observer = new MutationObserver(() => {
-      if (window.location.href !== lastUrl) {
-        lastUrl = window.location.href;
-        
-        checkAndInjectButton();
-      }
-    });
-
-    // Start observing the document body for changes (including URL changes)
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+      initialize();
+    }
 })();
