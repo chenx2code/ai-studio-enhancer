@@ -2,7 +2,7 @@
 
 # Google AI Studio Markdown Copier Chrome Extension
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](manifest.json) [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+ [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 This is a Chrome extension designed to simplify the process of exporting conversation content from Google AI Studio.
 
