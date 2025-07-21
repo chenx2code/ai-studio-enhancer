@@ -1,4 +1,4 @@
-(function() {
+(function () {
   'use strict';
 
   let conversationHistory = null;
@@ -11,13 +11,13 @@
    */
   const s = document.createElement('script');
   s.src = chrome.runtime.getURL('interceptor.js');
-  s.onload = function() { this.remove(); };
+  s.onload = function () { this.remove(); };
   (document.head || document.documentElement).appendChild(s);
 
   /**
    * PART 2: 消息监听器
    */
-  window.addEventListener('message', function(event) {
+  window.addEventListener('message', function (event) {
     if (event.source === window && event.data && event.data.type === 'FROM_INTERCEPTOR') {
 
       const data = event.data.payload;
@@ -81,7 +81,7 @@
   /**
    * PART 3.5: 目录数据管理功能
    */
-  
+
   /**
    * Truncate text to specified length with ellipsis
    * @param {string} text - Text to truncate
@@ -104,7 +104,7 @@
     }
 
     const userPrompts = [];
-    
+
     conversationTurns.forEach((turn, index) => {
       // Validate turn structure
       if (!Array.isArray(turn) || turn.length < 9) {
@@ -112,15 +112,15 @@
       }
 
       const role = turn[8];
-      
+
       // Filter for user prompts only
       if (role === 'user') {
         const textContent = turn[0] || '';
         const imageContent = turn[1];
-        
+
         let promptText = '';
         let contentType = 'text';
-        
+
         // Handle different content types
         if (textContent && textContent.trim()) {
           // Text prompt
@@ -135,9 +135,28 @@
           return;
         }
 
+        // Try to find the corresponding DOM element to get its ID
+        let turnElementId = null;
+        const chatTurns = document.querySelectorAll('ms-chat-turn');
+
+        // Find user turns and match by index
+        let userTurnCount = 0;
+        for (const chatTurn of chatTurns) {
+          const container = chatTurn.querySelector('.chat-turn-container');
+          if (container && container.classList.contains('user')) {
+            if (userTurnCount === userPrompts.length) {
+              // This is the DOM element for current user prompt
+              turnElementId = chatTurn.id;
+              break;
+            }
+            userTurnCount++;
+          }
+        }
+
         // Create catalog item
         const catalogItem = {
           turnIndex: index,
+          turnElementId: turnElementId, // Store the DOM element ID
           promptText: promptText,
           truncatedText: truncateText(promptText, 50),
           contentType: contentType,
@@ -159,7 +178,7 @@
     try {
       catalogData = extractUserPrompts(conversationTurns);
       console.log('Catalog updated with', catalogData.length, 'user prompts');
-      
+
       // If catalog is currently visible, re-render the prompt list
       if (catalogVisible) {
         renderPromptList();
@@ -167,7 +186,7 @@
     } catch (error) {
       console.error('Error updating catalog data:', error);
       catalogData = [];
-      
+
       // If catalog is currently visible, re-render to show empty state
       if (catalogVisible) {
         renderPromptList();
@@ -176,9 +195,204 @@
   }
 
   /**
-   * PART 3.6: 目录切换功能
+   * Validate and clean up catalog data by checking if DOM elements still exist
    */
-  
+  function validateCatalogData() {
+    if (!catalogData || catalogData.length === 0) {
+      return;
+    }
+
+    const validItems = catalogData.filter(item => {
+      if (item.turnElementId) {
+        const element = document.getElementById(item.turnElementId);
+        return element !== null;
+      }
+      return true; // Keep items without ID for fallback
+    });
+
+    if (validItems.length !== catalogData.length) {
+      console.log(`Catalog validation: ${catalogData.length - validItems.length} items removed due to deleted DOM elements`);
+      catalogData = validItems;
+      
+      // Re-render catalog if visible
+      if (catalogVisible) {
+        renderPromptList();
+      }
+    }
+  }
+
+  /**
+   * Set up DOM mutation observer to detect conversation changes
+   */
+  function setupConversationObserver() {
+    // Find the conversation container
+    const conversationContainer = document.querySelector('body');
+    if (!conversationContainer) {
+      return;
+    }
+
+    // Create mutation observer to watch for DOM changes
+    const observer = new MutationObserver((mutations) => {
+      let shouldValidate = false;
+      
+      mutations.forEach((mutation) => {
+        // Check if any ms-chat-turn elements were removed
+        if (mutation.type === 'childList') {
+          mutation.removedNodes.forEach((node) => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              if (node.tagName === 'MS-CHAT-TURN' || 
+                  node.querySelector && node.querySelector('ms-chat-turn')) {
+                shouldValidate = true;
+              }
+            }
+          });
+        }
+      });
+
+      if (shouldValidate) {
+        console.log('Detected conversation changes, validating catalog data...');
+        // Use setTimeout to ensure DOM changes are complete
+        setTimeout(validateCatalogData, 100);
+      }
+    });
+
+    // Start observing
+    observer.observe(conversationContainer, {
+      childList: true,
+      subtree: true
+    });
+
+    console.log('Conversation observer set up successfully');
+  }
+
+  /**
+   * PART 3.6: 滚动导航功能
+   */
+
+  /**
+   * Navigate to a specific prompt in the conversation by scrolling to it
+   * @param {number} turnIndex - The turn index to navigate to
+   */
+  function navigateToPrompt(turnIndex) {
+    try {
+      console.log('=== Navigation Debug Info ===');
+      console.log('Attempting to navigate to turn index:', turnIndex);
+
+      // Find the catalog item that corresponds to this turnIndex
+      const catalogItem = catalogData.find(item => item.turnIndex === turnIndex);
+      if (!catalogItem) {
+        console.warn('Could not find catalog item for turn index:', turnIndex);
+        return;
+      }
+      console.log('Target catalog item:', catalogItem);
+
+      // Use direct ID-based navigation if available
+      if (catalogItem.turnElementId) {
+        console.log('Using direct ID navigation for element:', catalogItem.turnElementId);
+
+        const targetElement = document.getElementById(catalogItem.turnElementId);
+        if (targetElement) {
+          console.log('Found target element by ID:', targetElement);
+
+          // Scroll to the target element with smooth behavior
+          targetElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+            inline: 'nearest'
+          });
+
+          // Add visual highlight to indicate the navigated-to element
+          highlightElement(targetElement);
+
+          console.log('Successfully navigated to user prompt using ID:', catalogItem.turnElementId);
+          return;
+        } else {
+          console.warn('Could not find element with ID:', catalogItem.turnElementId);
+        }
+      }
+
+      // Fallback to index-based navigation if ID method fails
+      console.log('Falling back to index-based navigation');
+
+      // Find all ms-chat-turn elements (Google AI Studio's conversation structure)
+      const chatTurns = document.querySelectorAll('ms-chat-turn');
+      console.log('Found', chatTurns.length, 'ms-chat-turn elements');
+
+      if (chatTurns.length === 0) {
+        console.warn('Could not find ms-chat-turn elements for navigation');
+        return;
+      }
+
+      // Extract user turns only by looking for "user" class
+      const userTurns = [];
+      chatTurns.forEach((turn, index) => {
+        const container = turn.querySelector('.chat-turn-container');
+        if (container && container.classList.contains('user')) {
+          userTurns.push({
+            element: turn,
+            domIndex: index
+          });
+        }
+      });
+
+      console.log('Found', userTurns.length, 'user turns at DOM indices:', userTurns.map(t => t.domIndex));
+
+      // Find the catalog item's position in our user-only list
+      const catalogItemIndex = catalogData.findIndex(item => item.turnIndex === turnIndex);
+      console.log('Catalog item index:', catalogItemIndex, 'Total catalog items:', catalogData.length);
+
+      if (catalogItemIndex >= 0 && catalogItemIndex < userTurns.length) {
+        const targetTurn = userTurns[catalogItemIndex];
+        console.log('Navigating to user turn at catalog index:', catalogItemIndex, 'DOM index:', targetTurn.domIndex);
+
+        // Scroll to the target element with smooth behavior
+        targetTurn.element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+          inline: 'nearest'
+        });
+
+        // Add visual highlight to indicate the navigated-to element
+        highlightElement(targetTurn.element);
+
+        console.log('Successfully navigated to user prompt at turn index:', turnIndex);
+      } else {
+        console.warn('Could not map catalog item to DOM element. Catalog index:', catalogItemIndex, 'Available user turns:', userTurns.length);
+      }
+
+    } catch (error) {
+      console.error('Error during navigation:', error);
+    }
+  }
+
+  /**
+   * Highlight an element temporarily to indicate navigation
+   * @param {HTMLElement} element - Element to highlight
+   */
+  function highlightElement(element) {
+    // Store original styles
+    const originalBackground = element.style.backgroundColor;
+    const originalTransition = element.style.transition;
+
+    // Apply highlight
+    element.style.transition = 'background-color 0.3s ease';
+    element.style.backgroundColor = 'rgba(66, 133, 244, 0.1)'; // Light blue highlight
+
+    // Remove highlight after delay
+    setTimeout(() => {
+      element.style.backgroundColor = originalBackground;
+
+      // Remove transition after background returns to normal
+      setTimeout(() => {
+        element.style.transition = originalTransition;
+      }, 300);
+    }, 1500);
+  }
+
+  /**
+   * PART 3.7: 目录切换功能
+   */
+
   /**
    * Create catalog panel DOM element
    * @returns {HTMLElement} The catalog panel element
@@ -187,40 +401,39 @@
     const panel = document.createElement('div');
     panel.id = 'catalog-panel';
     panel.className = 'catalog-panel';
-    
+
     // Create panel header
     const header = document.createElement('div');
     header.className = 'catalog-header';
     header.textContent = chrome.i18n.getMessage('catalogHeader');
-    
+
     // Create prompt list container
     const listContainer = document.createElement('div');
     listContainer.id = 'catalog-list-container';
     listContainer.className = 'catalog-list-container';
-    
+
     panel.appendChild(header);
     panel.appendChild(listContainer);
-    
+
     return panel;
   }
 
   /**
    * Create prompt list item element
    * @param {Object} catalogItem - Catalog item data
-   * @param {number} index - Index of the item in the list
    * @returns {HTMLElement} The list item element
    */
-  function createPromptListItem(catalogItem, index) {
+  function createPromptListItem(catalogItem) {
     const listItem = document.createElement('div');
     listItem.className = 'catalog-list-item';
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
     listItem.setAttribute('role', 'button');
     listItem.setAttribute('tabindex', '0');
-    
+
     // Create prompt text element
     const promptText = document.createElement('span');
     promptText.className = 'catalog-prompt-text';
-    
+
     // Display appropriate content based on content type
     if (catalogItem.contentType === 'image') {
       promptText.textContent = '[Image]';
@@ -228,23 +441,23 @@
     } else {
       promptText.textContent = catalogItem.truncatedText;
     }
-    
+
     listItem.appendChild(promptText);
-    
-    // Add click event handler for navigation (placeholder for now)
-    listItem.addEventListener('click', function() {
+
+    // Add click event handler for navigation
+    listItem.addEventListener('click', function () {
       console.log('Navigate to prompt at turn index:', catalogItem.turnIndex);
-      // TODO: Implement navigation functionality in task 6
+      navigateToPrompt(catalogItem.turnIndex);
     });
-    
+
     // Add keyboard support
-    listItem.addEventListener('keydown', function(event) {
+    listItem.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         listItem.click();
       }
     });
-    
+
     return listItem;
   }
 
@@ -257,10 +470,10 @@
       console.error('Catalog list container not found');
       return;
     }
-    
+
     // Clear existing content
     listContainer.innerHTML = '';
-    
+
     // Handle empty state
     if (!catalogData || catalogData.length === 0) {
       const emptyState = document.createElement('div');
@@ -269,13 +482,13 @@
       listContainer.appendChild(emptyState);
       return;
     }
-    
+
     // Create list items for each user prompt
-    catalogData.forEach((catalogItem, index) => {
-      const listItem = createPromptListItem(catalogItem, index);
+    catalogData.forEach((catalogItem) => {
+      const listItem = createPromptListItem(catalogItem);
       listContainer.appendChild(listItem);
     });
-    
+
     console.log('Rendered', catalogData.length, 'prompt list items');
   }
 
@@ -284,15 +497,15 @@
    */
   function showCatalogPanel() {
     let panel = document.getElementById('catalog-panel');
-    
+
     if (!panel) {
       panel = createCatalogPanel();
       document.body.appendChild(panel);
     }
-    
+
     // Render the prompt list
     renderPromptList();
-    
+
     panel.style.display = 'block';
     console.log('Catalog panel shown with', catalogData.length, 'items');
   }
@@ -314,7 +527,7 @@
   function toggleCatalog() {
     catalogVisible = !catalogVisible;
     console.log('Catalog toggled:', catalogVisible ? 'visible' : 'hidden');
-    
+
     if (catalogVisible) {
       showCatalogPanel();
     } else {
@@ -350,7 +563,7 @@
       const toolbar = document.querySelector('ms-toolbar .toolbar-container');
       if (toolbar) {
         clearInterval(injectionInterval);
-        
+
         // Create export markdown button if it doesn't exist
         if (!existingExportButton) {
           const exportTooltipText = chrome.i18n.getMessage('tooltipCopyMarkdown');
@@ -372,12 +585,12 @@
           exportButton.appendChild(exportIcon);
           exportButton.appendChild(exportTooltip);
           exportButton.addEventListener('click', exportToMarkdown);
-          
+
           const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
           if (moreButton) toolbar.insertBefore(exportButton, moreButton);
           else toolbar.appendChild(exportButton);
         }
-        
+
         // Create catalog toggle button if it doesn't exist
         if (!existingCatalogButton) {
           const catalogTooltipText = chrome.i18n.getMessage('tooltipCatalog');
@@ -399,7 +612,7 @@
           catalogButton.appendChild(catalogIcon);
           catalogButton.appendChild(catalogTooltip);
           catalogButton.addEventListener('click', toggleCatalog);
-          
+
           const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
           if (moreButton) toolbar.insertBefore(catalogButton, moreButton);
           else toolbar.appendChild(catalogButton);
@@ -410,6 +623,9 @@
 
   function initialize() {
     checkAndInjectButton();
+    
+    // Set up conversation observer to handle deletions
+    setupConversationObserver();
 
     // Monitor URL changes for single-page applications
     let lastUrl = window.location.href;
