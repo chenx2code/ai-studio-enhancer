@@ -178,18 +178,67 @@
    */
   
   /**
+   * Create catalog panel DOM element
+   * @returns {HTMLElement} The catalog panel element
+   */
+  function createCatalogPanel() {
+    const panel = document.createElement('div');
+    panel.id = 'catalog-panel';
+    panel.className = 'catalog-panel';
+    
+    // Create panel header
+    const header = document.createElement('div');
+    header.className = 'catalog-header';
+    header.textContent = chrome.i18n.getMessage('catalogHeader');
+    
+    // Create prompt list container
+    const listContainer = document.createElement('div');
+    listContainer.id = 'catalog-list-container';
+    listContainer.className = 'catalog-list-container';
+    
+    panel.appendChild(header);
+    panel.appendChild(listContainer);
+    
+    return panel;
+  }
+
+  /**
+   * Show catalog panel
+   */
+  function showCatalogPanel() {
+    let panel = document.getElementById('catalog-panel');
+    
+    if (!panel) {
+      panel = createCatalogPanel();
+      document.body.appendChild(panel);
+    }
+    
+    panel.style.display = 'block';
+    console.log('Catalog panel shown with', catalogData.length, 'items');
+  }
+
+  /**
+   * Hide catalog panel
+   */
+  function hideCatalogPanel() {
+    const panel = document.getElementById('catalog-panel');
+    if (panel) {
+      panel.style.display = 'none';
+    }
+    console.log('Catalog panel hidden');
+  }
+
+  /**
    * Toggle catalog panel visibility
    */
   function toggleCatalog() {
     catalogVisible = !catalogVisible;
     console.log('Catalog toggled:', catalogVisible ? 'visible' : 'hidden');
     
-    // TODO: This will be implemented in task 4 (Create basic catalog panel UI)
-    // For now, just log the state change
     if (catalogVisible) {
-      console.log('Catalog should be shown with', catalogData.length, 'items');
+      showCatalogPanel();
     } else {
-      console.log('Catalog should be hidden');
+      hideCatalogPanel();
     }
   }
 
