@@ -394,26 +394,59 @@
    */
 
   /**
-   * Create catalog panel DOM element
-   * @returns {HTMLElement} The catalog panel element
+   * Create catalog panel DOM element, mimicking the native side panel structure.
+   * @returns {HTMLElement} The catalog panel element.
    */
   function createCatalogPanel() {
-    const panel = document.createElement('div');
-    panel.id = 'catalog-panel';
-    panel.className = 'catalog-panel';
+    // Create the main container with the same classes as the native one
+    const panel = document.createElement('ms-right-side-panel');
+    panel.id = 'catalog-side-panel';
+    // Add native classes for styling and structure
+    panel.className = 'ng-tns-c1846459499-4 ng-star-inserted'; 
+    panel.style.display = 'none'; // Initially hidden
 
-    // Create panel header
+    // Create the inner content container that handles the slide-in animation
+    const contentContainer = document.createElement('div');
+    contentContainer.className = 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted';
+
+    // Create the panel header
     const header = document.createElement('div');
-    header.className = 'catalog-header';
-    header.textContent = chrome.i18n.getMessage('catalogHeader');
+    header.className = 'header'; // Match prompt gallery
 
-    // Create prompt list container
-    const listContainer = document.createElement('div');
-    listContainer.id = 'catalog-list-container';
-    listContainer.className = 'catalog-list-container';
+    const title = document.createElement('h2');
+    title.className = 'no-select gmat-title-small';
+    title.textContent = chrome.i18n.getMessage('catalogHeader');
 
-    panel.appendChild(header);
-    panel.appendChild(listContainer);
+    // Create the close button
+    const closeButton = document.createElement('button');
+    closeButton.className = 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed'; // Match prompt gallery
+    closeButton.setAttribute('aria-label', 'Close catalog panel');
+    closeButton.addEventListener('click', () => toggleCatalog(false)); // Explicitly close
+
+    const closeIcon = document.createElement('span');
+    closeIcon.className = 'material-symbols-outlined notranslate';
+    closeIcon.textContent = 'close';
+
+    // Assemble the header
+    closeButton.appendChild(closeIcon);
+    header.appendChild(title);
+    header.appendChild(closeButton);
+
+    // Create the scrollable content area
+    const settingsWrapper = document.createElement('div');
+    settingsWrapper.className = 'settings-items-wrapper';
+    settingsWrapper.setAttribute('msscrollableindicatorcontainer', '');
+
+    const scrollableArea = document.createElement('div');
+    scrollableArea.className = 'scrollable-area';
+    scrollableArea.id = 'catalog-list-container'; // Keep this ID for rendering the list
+    scrollableArea.setAttribute('msscrollable', '');
+
+    // Assemble the panel
+    settingsWrapper.appendChild(scrollableArea);
+    contentContainer.appendChild(header);
+    contentContainer.appendChild(settingsWrapper);
+    panel.appendChild(contentContainer);
 
     return panel;
   }
@@ -446,8 +479,9 @@
 
     // Add click event handler for navigation
     listItem.addEventListener('click', function () {
-      console.log('Navigate to prompt at turn index:', catalogItem.turnIndex);
       navigateToPrompt(catalogItem.turnIndex);
+      // Optional: close panel after navigation
+      // toggleCatalog(false); 
     });
 
     // Add keyboard support
@@ -467,14 +501,10 @@
   function renderPromptList() {
     const listContainer = document.getElementById('catalog-list-container');
     if (!listContainer) {
-      console.error('Catalog list container not found');
       return;
     }
-
-    // Clear existing content
     listContainer.innerHTML = '';
 
-    // Handle empty state
     if (!catalogData || catalogData.length === 0) {
       const emptyState = document.createElement('div');
       emptyState.className = 'catalog-empty-state';
@@ -483,55 +513,43 @@
       return;
     }
 
-    // Create list items for each user prompt
     catalogData.forEach((catalogItem) => {
       const listItem = createPromptListItem(catalogItem);
       listContainer.appendChild(listItem);
     });
-
-    console.log('Rendered', catalogData.length, 'prompt list items');
   }
 
   /**
-   * Show catalog panel
+   * Toggle catalog panel visibility and handle native panel exclusivity.
+   * @param {boolean} [forceShow] - Force a specific state. Toggles if undefined.
    */
-  function showCatalogPanel() {
-    let panel = document.getElementById('catalog-panel');
+  function toggleCatalog(forceShow) {
+    const catalogPanel = document.getElementById('catalog-side-panel');
+    const catalogButton = document.getElementById('catalog-toggle-btn');
+    if (!catalogPanel || !catalogButton) return;
 
-    if (!panel) {
-      panel = createCatalogPanel();
-      document.body.appendChild(panel);
-    }
+    const shouldShow = forceShow !== undefined ? forceShow : catalogPanel.style.display === 'none';
 
-    // Render the prompt list
-    renderPromptList();
+    if (shouldShow) {
+        // --- SHOW CATALOG ---
+        const sideToggles = document.querySelector('.toggles-container');
+        const nativeButtons = sideToggles?.querySelectorAll('button[aria-label*="settings"], button[aria-label*="gallery"]');
+        nativeButtons?.forEach(btn => {
+            if (btn.classList.contains('right-side-panel-button-highlight')) {
+                btn.click();
+            }
+        });
 
-    panel.style.display = 'block';
-    console.log('Catalog panel shown with', catalogData.length, 'items');
-  }
+        renderPromptList();
+        catalogPanel.style.display = 'flex'; // Set display to make it visible
+        catalogButton.classList.add('right-side-panel-button-highlight');
+        catalogVisible = true;
 
-  /**
-   * Hide catalog panel
-   */
-  function hideCatalogPanel() {
-    const panel = document.getElementById('catalog-panel');
-    if (panel) {
-      panel.style.display = 'none';
-    }
-    console.log('Catalog panel hidden');
-  }
-
-  /**
-   * Toggle catalog panel visibility
-   */
-  function toggleCatalog() {
-    catalogVisible = !catalogVisible;
-    console.log('Catalog toggled:', catalogVisible ? 'visible' : 'hidden');
-
-    if (catalogVisible) {
-      showCatalogPanel();
     } else {
-      hideCatalogPanel();
+        // --- HIDE CATALOG ---
+        catalogPanel.style.display = 'none'; // Set display to none to hide it
+        catalogButton.classList.remove('right-side-panel-button-highlight');
+        catalogVisible = false;
     }
   }
 
@@ -541,49 +559,40 @@
   function checkAndInjectButton() {
     const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
     const currentUrl = window.location.href;
-    const existingExportButton = document.getElementById('export-markdown-btn');
-    const existingCatalogButton = document.getElementById('catalog-toggle-btn');
 
     if (!targetUrlPattern.test(currentUrl)) {
-      if (existingExportButton) {
-        existingExportButton.remove();
-      }
-      if (existingCatalogButton) {
-        existingCatalogButton.remove();
-      }
-      return;
-    }
-
-    if (existingExportButton && existingCatalogButton) {
-      // Both buttons already exist and URL matches, no need to re-inject
+      const existingButton = document.getElementById('export-markdown-btn');
+      if (existingButton) existingButton.remove();
+      const existingCatalogButton = document.getElementById('catalog-toggle-btn');
+      if (existingCatalogButton) existingCatalogButton.remove();
+      const existingCatalogPanel = document.getElementById('catalog-side-panel');
+      if (existingCatalogPanel) existingCatalogPanel.remove();
       return;
     }
 
     const injectionInterval = setInterval(() => {
       const toolbar = document.querySelector('ms-toolbar .toolbar-container');
-      if (toolbar) {
+      const sideToggles = document.querySelector('.toggles-container');
+
+      if (toolbar && sideToggles) {
         clearInterval(injectionInterval);
 
-        // Create export markdown button if it doesn't exist
-        if (!existingExportButton) {
-          const exportTooltipText = chrome.i18n.getMessage('tooltipCopyMarkdown');
+        // --- Inject Export Button (top bar) ---
+        if (!document.getElementById('export-markdown-btn')) {
           const exportButton = document.createElement('button');
           exportButton.id = 'export-markdown-btn';
-          exportButton.setAttribute('aria-label', exportTooltipText);
-          exportButton.setAttribute('aria-describedby', 'export-markdown-tooltip');
+          exportButton.className = 'custom-toolbar-button'; // Use shared class
 
           const exportIcon = document.createElement('span');
           exportIcon.className = 'material-symbols-outlined';
-          exportIcon.innerText = 'markdown_copy';
-
-          const exportTooltip = document.createElement('span');
-          exportTooltip.id = 'export-markdown-tooltip';
-          exportTooltip.className = 'custom-tooltip-text';
-          exportTooltip.setAttribute('role', 'tooltip');
-          exportTooltip.innerText = exportTooltipText;
-
+          exportIcon.textContent = 'markdown_copy';
           exportButton.appendChild(exportIcon);
+
+          const exportTooltip = document.createElement('div');
+          exportTooltip.className = 'custom-tooltip-text';
+          exportTooltip.textContent = chrome.i18n.getMessage('tooltipCopyMarkdown');
           exportButton.appendChild(exportTooltip);
+
           exportButton.addEventListener('click', exportToMarkdown);
 
           const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
@@ -591,32 +600,46 @@
           else toolbar.appendChild(exportButton);
         }
 
-        // Create catalog toggle button if it doesn't exist
-        if (!existingCatalogButton) {
-          const catalogTooltipText = chrome.i18n.getMessage('tooltipCatalog');
+        // --- Inject Catalog Button (right side) ---
+        if (!document.getElementById('catalog-toggle-btn')) {
           const catalogButton = document.createElement('button');
           catalogButton.id = 'catalog-toggle-btn';
-          catalogButton.setAttribute('aria-label', catalogTooltipText);
-          catalogButton.setAttribute('aria-describedby', 'catalog-tooltip');
+          catalogButton.className = 'custom-toolbar-button'; // Use shared class
 
           const catalogIcon = document.createElement('span');
           catalogIcon.className = 'material-symbols-outlined';
-          catalogIcon.innerText = 'list';
-
-          const catalogTooltip = document.createElement('span');
-          catalogTooltip.id = 'catalog-tooltip';
-          catalogTooltip.className = 'custom-tooltip-text';
-          catalogTooltip.setAttribute('role', 'tooltip');
-          catalogTooltip.innerText = catalogTooltipText;
-
+          catalogIcon.textContent = 'list';
           catalogButton.appendChild(catalogIcon);
-          catalogButton.appendChild(catalogTooltip);
-          catalogButton.addEventListener('click', toggleCatalog);
 
-          const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
-          if (moreButton) toolbar.insertBefore(catalogButton, moreButton);
-          else toolbar.appendChild(catalogButton);
+          const catalogTooltip = document.createElement('div');
+          catalogTooltip.className = 'custom-tooltip-text';
+          catalogTooltip.textContent = chrome.i18n.getMessage('tooltipCatalog');
+          catalogButton.appendChild(catalogTooltip);
+
+          catalogButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleCatalog();
+          });
+
+          sideToggles.appendChild(catalogButton);
         }
+
+        // --- Inject Catalog Panel (hidden) ---
+        if (!document.getElementById('catalog-side-panel')) {
+          const panel = createCatalogPanel();
+          const nativePanelContainer = document.querySelector('ms-right-side-panel');
+          if(nativePanelContainer) {
+             nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+          }
+        }
+
+        // Add listeners to all native sidebar buttons to close our panel
+        const nativeSidebarButtons = sideToggles.querySelectorAll('button[aria-label*="settings"], button[aria-label*="gallery"]');
+        nativeSidebarButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                toggleCatalog(false); // Force-close our panel
+            });
+        });
       }
     }, 500);
   }
