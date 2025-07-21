@@ -4,6 +4,7 @@
   let conversationHistory = null;
   let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
   let catalogData = [];
+  let catalogVisible = false;
 
   /**
    * PART 1: 脚本注射器
@@ -173,51 +174,107 @@
   }
 
   /**
+   * PART 3.6: 目录切换功能
+   */
+  
+  /**
+   * Toggle catalog panel visibility
+   */
+  function toggleCatalog() {
+    catalogVisible = !catalogVisible;
+    console.log('Catalog toggled:', catalogVisible ? 'visible' : 'hidden');
+    
+    // TODO: This will be implemented in task 4 (Create basic catalog panel UI)
+    // For now, just log the state change
+    if (catalogVisible) {
+      console.log('Catalog should be shown with', catalogData.length, 'items');
+    } else {
+      console.log('Catalog should be hidden');
+    }
+  }
+
+  /**
    * PART 4: UI注入逻辑
    */
   function checkAndInjectButton() {
     const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
     const currentUrl = window.location.href;
-    const existingButton = document.getElementById('export-markdown-btn');
+    const existingExportButton = document.getElementById('export-markdown-btn');
+    const existingCatalogButton = document.getElementById('catalog-toggle-btn');
 
     if (!targetUrlPattern.test(currentUrl)) {
-      if (existingButton) {
-        existingButton.remove();
+      if (existingExportButton) {
+        existingExportButton.remove();
+      }
+      if (existingCatalogButton) {
+        existingCatalogButton.remove();
       }
       return;
     }
 
-    if (existingButton) {
-      // Button already exists and URL matches, no need to re-inject
+    if (existingExportButton && existingCatalogButton) {
+      // Both buttons already exist and URL matches, no need to re-inject
       return;
     }
 
-    const tooltipText = chrome.i18n.getMessage('tooltipCopyMarkdown');
     const injectionInterval = setInterval(() => {
       const toolbar = document.querySelector('ms-toolbar .toolbar-container');
       if (toolbar) {
         clearInterval(injectionInterval);
-        const exportButton = document.createElement('button');
-        exportButton.id = 'export-markdown-btn';
-        exportButton.setAttribute('aria-label', tooltipText);
-        exportButton.setAttribute('aria-describedby', 'export-markdown-tooltip');
+        
+        // Create export markdown button if it doesn't exist
+        if (!existingExportButton) {
+          const exportTooltipText = chrome.i18n.getMessage('tooltipCopyMarkdown');
+          const exportButton = document.createElement('button');
+          exportButton.id = 'export-markdown-btn';
+          exportButton.setAttribute('aria-label', exportTooltipText);
+          exportButton.setAttribute('aria-describedby', 'export-markdown-tooltip');
 
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.innerText = 'markdown_copy';
+          const exportIcon = document.createElement('span');
+          exportIcon.className = 'material-symbols-outlined';
+          exportIcon.innerText = 'markdown_copy';
 
-        const tooltip = document.createElement('span');
-        tooltip.id = 'export-markdown-tooltip';
-        tooltip.className = 'custom-tooltip-text';
-        tooltip.setAttribute('role', 'tooltip');
-        tooltip.innerText = tooltipText;
+          const exportTooltip = document.createElement('span');
+          exportTooltip.id = 'export-markdown-tooltip';
+          exportTooltip.className = 'custom-tooltip-text';
+          exportTooltip.setAttribute('role', 'tooltip');
+          exportTooltip.innerText = exportTooltipText;
 
-        exportButton.appendChild(icon);
-        exportButton.appendChild(tooltip);
-        exportButton.addEventListener('click', exportToMarkdown);
-        const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
-        if (moreButton) toolbar.insertBefore(exportButton, moreButton);
-        else toolbar.appendChild(exportButton);
+          exportButton.appendChild(exportIcon);
+          exportButton.appendChild(exportTooltip);
+          exportButton.addEventListener('click', exportToMarkdown);
+          
+          const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
+          if (moreButton) toolbar.insertBefore(exportButton, moreButton);
+          else toolbar.appendChild(exportButton);
+        }
+        
+        // Create catalog toggle button if it doesn't exist
+        if (!existingCatalogButton) {
+          const catalogTooltipText = chrome.i18n.getMessage('tooltipCatalog');
+          const catalogButton = document.createElement('button');
+          catalogButton.id = 'catalog-toggle-btn';
+          catalogButton.setAttribute('aria-label', catalogTooltipText);
+          catalogButton.setAttribute('aria-describedby', 'catalog-tooltip');
+
+          const catalogIcon = document.createElement('span');
+          catalogIcon.className = 'material-symbols-outlined';
+          catalogIcon.innerText = 'list';
+
+          const catalogTooltip = document.createElement('span');
+          catalogTooltip.id = 'catalog-tooltip';
+          catalogTooltip.className = 'custom-tooltip-text';
+          catalogTooltip.setAttribute('role', 'tooltip');
+          catalogTooltip.innerText = catalogTooltipText;
+
+          catalogButton.appendChild(catalogIcon);
+          catalogButton.appendChild(catalogTooltip);
+          catalogButton.addEventListener('click', toggleCatalog);
+          
+          const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
+          if (moreButton) toolbar.insertBefore(catalogButton, moreButton);
+          else toolbar.appendChild(catalogButton);
+        }
       }
     }, 500);
   }
