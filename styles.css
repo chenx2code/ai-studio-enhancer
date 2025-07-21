@@ -86,36 +86,52 @@
  *    Styles to match the native side panels like 'Prompt gallery'.
  */
 #catalog-side-panel {
-    display: flex; /* Changed from none to flex */
+    display: flex; /* This remains to help structure the panel itself */
     flex-direction: column;
     width: 300px;
-    height: 100%; /* Ensure it takes full viewport height */
+    height: 100%;
     background-color: rgb(255, 255, 255);
     border-radius: 20px;
     box-sizing: border-box;
     flex-shrink: 0;
-    overflow: hidden; /* Hide any overflow from the container itself */
+    overflow: hidden;
 }
 
 #catalog-side-panel.panel-hidden {
     display: none; /* Use a class to hide */
 }
 
-/* Style the header to match the native panel */
+/* NEW: Add flex layout to the content container inside the panel */
+#catalog-side-panel .content-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden; /* Important for child flex container */
+}
+
+/* This is the header. The flex-shrink: 0 is correct, it shouldn't shrink. */
 #catalog-side-panel .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 16px 24px;
     box-sizing: border-box;
-    flex-shrink: 0; /* Prevent header from shrinking */
+    flex-shrink: 0;
 }
 
+/* NEW: This is the wrapper for our scrollable list. Make it grow and handle overflow. */
+#catalog-side-panel .settings-items-wrapper {
+    flex: 1; /* This will make it take all available vertical space */
+    overflow-y: auto; /* The scrollbar will appear on this container */
+    min-height: 0; /* Prevents flex item from overflowing its container */
+}
+
+/* The list itself no longer needs height or overflow control. */
 #catalog-list-container {
     padding: 8px 0;
     box-sizing: border-box;
-    height: 100%;
-    overflow-y: auto; /* Add this to enable vertical scrolling */
+    /* height: 100%; REMOVED */
+    /* overflow-y: auto; MOVED to parent wrapper */
 }
 
 /*
