@@ -123,16 +123,20 @@
 
         // Handle different content types
         if (textContent && textContent.trim()) {
-          // Text prompt
-          promptText = textContent.trim();
-          contentType = 'text';
+            // Text prompt
+            promptText = textContent.trim();
+            contentType = 'text';
         } else if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-          // Image prompt (when turn[0] is empty but turn[1] has content)
-          promptText = '[Image]';
-          contentType = 'image';
+            // Image prompt (when turn[0] is empty but turn[1] has content)
+            promptText = '[Image]';
+            contentType = 'image';
         } else {
-          // Skip empty prompts
-          return;
+            // Fallback for other content types like documents/files.
+            // Instead of skipping the turn, we create a placeholder entry.
+            // This is crucial for keeping the catalog index synchronized with the
+            // actual number of user prompts in the DOM, fixing navigation.
+            promptText = '[File]';
+            contentType = 'file';
         }
 
         // Try to find the corresponding DOM element to get its ID
@@ -468,11 +472,13 @@
     promptText.className = 'catalog-prompt-text';
 
     // Display appropriate content based on content type
-    if (catalogItem.contentType === 'image') {
-      promptText.textContent = '[Image]';
-      promptText.classList.add('catalog-image-prompt');
+    if (catalogItem.contentType === 'text') {
+        promptText.textContent = catalogItem.truncatedText;
     } else {
-      promptText.textContent = catalogItem.truncatedText;
+        // For non-text prompts ('image', 'file'), use the full text (e.g., '[Image]')
+        // and apply special styling.
+        promptText.textContent = catalogItem.promptText;
+        promptText.classList.add('catalog-image-prompt');
     }
 
     listItem.appendChild(promptText);
