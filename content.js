@@ -402,8 +402,8 @@
     const panel = document.createElement('ms-right-side-panel');
     panel.id = 'catalog-side-panel';
     // Add native classes for styling and structure
-    panel.className = 'ng-tns-c1846459499-4 ng-star-inserted'; 
-    panel.style.display = 'none'; // Initially hidden
+    panel.className = 'ng-tns-c1846459499-4 ng-star-inserted';
+    // No initial class needed, default CSS state is hidden
 
     // Create the inner content container that handles the slide-in animation
     const contentContainer = document.createElement('div');
@@ -528,7 +528,10 @@
     const catalogButton = document.getElementById('catalog-toggle-btn');
     if (!catalogPanel || !catalogButton) return;
 
-    const shouldShow = forceShow !== undefined ? forceShow : catalogPanel.style.display === 'none';
+    const isVisible = catalogPanel.classList.contains('panel-visible');
+    const shouldShow = forceShow !== undefined ? forceShow : !isVisible;
+
+    if (shouldShow === isVisible) return; // No change needed
 
     if (shouldShow) {
         // --- SHOW CATALOG ---
@@ -541,13 +544,13 @@
         });
 
         renderPromptList();
-        catalogPanel.style.display = 'flex'; // Set display to make it visible
+        catalogPanel.classList.add('panel-visible');
         catalogButton.classList.add('right-side-panel-button-highlight');
         catalogVisible = true;
 
     } else {
         // --- HIDE CATALOG ---
-        catalogPanel.style.display = 'none'; // Set display to none to hide it
+        catalogPanel.classList.remove('panel-visible');
         catalogButton.classList.remove('right-side-panel-button-highlight');
         catalogVisible = false;
     }

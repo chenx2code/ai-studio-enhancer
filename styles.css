@@ -86,27 +86,38 @@
  *    Styles to match the native side panels like 'Prompt gallery'.
  */
 #catalog-side-panel {
-    display: flex; /* This remains to help structure the panel itself */
+    display: flex;
     flex-direction: column;
-    width: 300px;
     height: 100%;
     background-color: rgb(255, 255, 255);
     border-radius: 20px;
     box-sizing: border-box;
     flex-shrink: 0;
-    overflow: hidden;
+
+    /* Animation: Hide by default by collapsing width */
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden; /* Crucial for max-width animation */
+    transition: max-width 300ms cubic-bezier(0.4, 0, 0.2, 1), 
+                opacity 200ms ease-in-out;
+}
+
+#catalog-side-panel.panel-visible {
+    max-width: 300px; /* Animate to full width */
+    opacity: 1;
 }
 
 #catalog-side-panel.panel-hidden {
     display: none; /* Use a class to hide */
 }
 
-/* NEW: Add flex layout to the content container inside the panel */
+/* This container needs a fixed width so content doesn't wrap during animation */
 #catalog-side-panel .content-container {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden; /* Important for child flex container */
+    width: 300px; /* Fixed width */
 }
 
 /* This is the header. The flex-shrink: 0 is correct, it shouldn't shrink. */
