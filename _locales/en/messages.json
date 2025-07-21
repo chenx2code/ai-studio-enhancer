@@ -22,5 +22,17 @@
   "successCopied": {
     "message": "Conversation copied successfully!",
     "description": "Success message after the conversation is copied to the clipboard."
+  },
+  "tooltipCatalog": {
+    "message": "Toggle conversation catalog",
+    "description": "The tooltip text for the catalog toggle button."
+  },
+  "catalogHeader": {
+    "message": "Conversation Catalog",
+    "description": "The header text for the catalog panel."
+  },
+  "catalogEmptyState": {
+    "message": "No conversation prompts found",
+    "description": "Message displayed when the catalog is empty or no user prompts are available."
   }
 }

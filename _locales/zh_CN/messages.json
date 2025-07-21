@@ -22,5 +22,17 @@
   "successCopied": {
     "message": "对话已成功复制！",
     "description": "对话成功复制到剪贴板后显示的消息。"
+  },
+  "tooltipCatalog": {
+    "message": "打开对话目录",
+    "description": "目录切换按钮的工具提示文本。"
+  },
+  "catalogHeader": {
+    "message": "对话目录",
+    "description": "目录面板的标题文本。"
+  },
+  "catalogEmptyState": {
+    "message": "未找到对话提示",
+    "description": "当目录为空或没有用户提示时显示的消息。"
   }
 }
