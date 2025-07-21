@@ -159,18 +159,20 @@
     try {
       catalogData = extractUserPrompts(conversationTurns);
       console.log('Catalog updated with', catalogData.length, 'user prompts');
+      
+      // If catalog is currently visible, re-render the prompt list
+      if (catalogVisible) {
+        renderPromptList();
+      }
     } catch (error) {
       console.error('Error updating catalog data:', error);
       catalogData = [];
+      
+      // If catalog is currently visible, re-render to show empty state
+      if (catalogVisible) {
+        renderPromptList();
+      }
     }
-  }
-
-  /**
-   * Get current catalog data
-   * @returns {Array} Current catalog data array
-   */
-  function getCatalogData() {
-    return catalogData;
   }
 
   /**
@@ -203,6 +205,81 @@
   }
 
   /**
+   * Create prompt list item element
+   * @param {Object} catalogItem - Catalog item data
+   * @param {number} index - Index of the item in the list
+   * @returns {HTMLElement} The list item element
+   */
+  function createPromptListItem(catalogItem, index) {
+    const listItem = document.createElement('div');
+    listItem.className = 'catalog-list-item';
+    listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
+    listItem.setAttribute('role', 'button');
+    listItem.setAttribute('tabindex', '0');
+    
+    // Create prompt text element
+    const promptText = document.createElement('span');
+    promptText.className = 'catalog-prompt-text';
+    
+    // Display appropriate content based on content type
+    if (catalogItem.contentType === 'image') {
+      promptText.textContent = '[Image]';
+      promptText.classList.add('catalog-image-prompt');
+    } else {
+      promptText.textContent = catalogItem.truncatedText;
+    }
+    
+    listItem.appendChild(promptText);
+    
+    // Add click event handler for navigation (placeholder for now)
+    listItem.addEventListener('click', function() {
+      console.log('Navigate to prompt at turn index:', catalogItem.turnIndex);
+      // TODO: Implement navigation functionality in task 6
+    });
+    
+    // Add keyboard support
+    listItem.addEventListener('keydown', function(event) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        listItem.click();
+      }
+    });
+    
+    return listItem;
+  }
+
+  /**
+   * Render prompt list in the catalog panel
+   */
+  function renderPromptList() {
+    const listContainer = document.getElementById('catalog-list-container');
+    if (!listContainer) {
+      console.error('Catalog list container not found');
+      return;
+    }
+    
+    // Clear existing content
+    listContainer.innerHTML = '';
+    
+    // Handle empty state
+    if (!catalogData || catalogData.length === 0) {
+      const emptyState = document.createElement('div');
+      emptyState.className = 'catalog-empty-state';
+      emptyState.textContent = chrome.i18n.getMessage('catalogEmptyState');
+      listContainer.appendChild(emptyState);
+      return;
+    }
+    
+    // Create list items for each user prompt
+    catalogData.forEach((catalogItem, index) => {
+      const listItem = createPromptListItem(catalogItem, index);
+      listContainer.appendChild(listItem);
+    });
+    
+    console.log('Rendered', catalogData.length, 'prompt list items');
+  }
+
+  /**
    * Show catalog panel
    */
   function showCatalogPanel() {
@@ -212,6 +289,9 @@
       panel = createCatalogPanel();
       document.body.appendChild(panel);
     }
+    
+    // Render the prompt list
+    renderPromptList();
     
     panel.style.display = 'block';
     console.log('Catalog panel shown with', catalogData.length, 'items');
