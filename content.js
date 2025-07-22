@@ -58,6 +58,15 @@
     }
   };
 
+  /**
+   * Constants for magic values used throughout the script.
+   */
+  const CONSTANTS = {
+    INJECTION_INTERVAL_MS: 500,
+    HIGHLIGHT_DURATION_MS: 1500,
+    HIGHLIGHT_FADE_OUT_MS: 300,
+  };
+
   let conversationHistory = null;
   let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
   let catalogData = [];
@@ -446,8 +455,8 @@
       // Remove transition after background returns to normal
       setTimeout(() => {
         element.style.transition = originalTransition;
-      }, 300);
-    }, 1500);
+      }, CONSTANTS.HIGHLIGHT_FADE_OUT_MS);
+    }, CONSTANTS.HIGHLIGHT_DURATION_MS);
   }
 
   /**
@@ -620,6 +629,35 @@
   }
 
   /**
+   * Factory function to create a standardized toolbar button.
+   * Encapsulates the repetitive logic of creating a button, its icon, and its tooltip.
+   * @param {string} id - The ID for the button element.
+   * @param {string} iconName - The name of the Material Symbol icon.
+   * @param {string} tooltipText - The text to display in the tooltip.
+   * @param {function} onClick - The function to call when the button is clicked.
+   * @returns {HTMLButtonElement} The fully constructed button element.
+   */
+  function createToolbarButton(id, iconName, tooltipText, onClick) {
+    const button = document.createElement('button');
+    button.id = id;
+    button.className = 'custom-toolbar-button'; // Shared class for base styling
+
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined';
+    icon.textContent = iconName;
+    button.appendChild(icon);
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'custom-tooltip-text';
+    tooltip.textContent = tooltipText;
+    button.appendChild(tooltip);
+
+    button.addEventListener('click', onClick);
+
+    return button;
+  }
+
+  /**
    * PART 4: UI注入逻辑
    */
   function checkAndInjectButton() {
@@ -637,77 +675,73 @@
     }
 
     const injectionInterval = setInterval(() => {
+      // Find injection points for core and auxiliary features.
       const toolbar = document.querySelector(SELECTORS.query.toolbar);
       const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
 
-      if (toolbar && sideToggles) {
+      // Stop the interval once we've had a chance to inject, to avoid re-running.
+      // The presence of either container is a good signal to proceed and then stop.
+      if (toolbar || sideToggles) {
         clearInterval(injectionInterval);
 
-        // --- Inject Export Button (top bar) ---
-        if (!document.getElementById(SELECTORS.id.exportButton)) {
-          const exportButton = document.createElement('button');
-          exportButton.id = SELECTORS.id.exportButton;
-          exportButton.className = 'custom-toolbar-button'; // Use shared class
+        // --- Graceful Injection for Core Feature: Export Button ---
+        if (toolbar) {
+          if (!document.getElementById(SELECTORS.id.exportButton)) {
+            const exportButton = createToolbarButton(
+              SELECTORS.id.exportButton,
+              'markdown_copy',
+              chrome.i18n.getMessage('tooltipCopyMarkdown'),
+              exportToMarkdown
+            );
 
-          const exportIcon = document.createElement('span');
-          exportIcon.className = 'material-symbols-outlined';
-          exportIcon.textContent = 'markdown_copy';
-          exportButton.appendChild(exportIcon);
-
-          const exportTooltip = document.createElement('div');
-          exportTooltip.className = 'custom-tooltip-text';
-          exportTooltip.textContent = chrome.i18n.getMessage('tooltipCopyMarkdown');
-          exportButton.appendChild(exportTooltip);
-
-          exportButton.addEventListener('click', exportToMarkdown);
-
-          const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
-          if (moreButton) toolbar.insertBefore(exportButton, moreButton);
-          else toolbar.appendChild(exportButton);
-        }
-
-        // --- Inject Catalog Button (right side) ---
-        if (!document.getElementById(SELECTORS.id.catalogButton)) {
-          const catalogButton = document.createElement('button');
-          catalogButton.id = SELECTORS.id.catalogButton;
-          catalogButton.className = 'custom-toolbar-button'; // Use shared class
-
-          const catalogIcon = document.createElement('span');
-          catalogIcon.className = 'material-symbols-outlined';
-          catalogIcon.textContent = 'list';
-          catalogButton.appendChild(catalogIcon);
-
-          const catalogTooltip = document.createElement('div');
-          catalogTooltip.className = 'custom-tooltip-text';
-          catalogTooltip.textContent = chrome.i18n.getMessage('tooltipCatalog');
-          catalogButton.appendChild(catalogTooltip);
-
-          catalogButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            toggleCatalog();
-          });
-
-          sideToggles.appendChild(catalogButton);
-        }
-
-        // --- Inject Catalog Panel (hidden) ---
-        if (!document.getElementById(SELECTORS.id.catalogPanel)) {
-          const panel = createCatalogPanel();
-          const nativePanelContainer = document.querySelector(SELECTORS.query.nativeSidePanel);
-          if(nativePanelContainer) {
-             nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+            const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
+            if (moreButton) {
+              toolbar.insertBefore(exportButton, moreButton);
+            } else {
+              toolbar.appendChild(exportButton);
+            }
           }
+        } else {
+          console.warn('Markdown Copier: Could not find toolbar to inject Export button.');
         }
 
-        // Add listeners to all native sidebar buttons to close our panel
-        const nativeSidebarButtons = sideToggles.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
-        nativeSidebarButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                toggleCatalog(false); // Force-close our panel
-            });
-        });
+        // --- Graceful Injection for Auxiliary Feature: Catalog ---
+        if (sideToggles) {
+          // Inject Catalog Button
+          if (!document.getElementById(SELECTORS.id.catalogButton)) {
+             const catalogButton = createToolbarButton(
+              SELECTORS.id.catalogButton,
+              'list',
+              chrome.i18n.getMessage('tooltipCatalog'),
+              (e) => {
+                e.stopPropagation();
+                toggleCatalog();
+              }
+            );
+            sideToggles.appendChild(catalogButton);
+          }
+
+          // Inject Catalog Panel (hidden)
+          if (!document.getElementById(SELECTORS.id.catalogPanel)) {
+            const panel = createCatalogPanel();
+            const nativePanelContainer = document.querySelector(SELECTORS.query.nativeSidePanel);
+            if (nativePanelContainer && nativePanelContainer.parentElement) {
+               nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+            }
+          }
+
+          // Add listeners to all native sidebar buttons to close our panel
+          const nativeSidebarButtons = sideToggles.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
+          nativeSidebarButtons.forEach(button => {
+              button.addEventListener('click', () => {
+                  toggleCatalog(false); // Force-close our panel
+              });
+          });
+        } else {
+          console.warn('Markdown Copier: Could not find side toggles to inject Catalog feature.');
+        }
       }
-    }, 500);
+    }, CONSTANTS.INJECTION_INTERVAL_MS);
   }
 
   function initialize() {
