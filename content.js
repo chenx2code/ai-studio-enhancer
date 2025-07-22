@@ -1,6 +1,63 @@
 (function () {
   'use strict';
 
+  /**
+   * Configuration object for storing all fragile CSS selectors and class names.
+   * Centralizing these makes the extension more resilient to website updates.
+   * If Google AI Studio changes its layout, we only need to update the values here.
+   */
+  const SELECTORS = {
+    // --- Host Page Queries ---
+    // Selectors for finding elements on the Google AI Studio page.
+    query: {
+      toolbar: 'ms-toolbar .toolbar-container',
+      sideTogglesContainer: '.toggles-container',
+      moreActionsButton: 'button[aria-label="View more actions"]',
+      nativeSidePanel: 'ms-right-side-panel',
+      nativeSidePanelButtons: 'button[aria-label*="settings"], button[aria-label*="gallery"]',
+      chatTurn: 'ms-chat-turn',
+      chatTurnContainer: '.chat-turn-container',
+      conversationObserverTarget: 'body',
+    },
+
+    // --- Host Page Classes ---
+    // Class names used by the native UI that we need to interact with or mimic.
+    class: {
+      userTurn: 'user',
+      nativeButtonHighlighted: 'right-side-panel-button-highlight',
+      // Classes mimicked from the native UI for consistent styling
+      nativePanelBase: 'ng-tns-c1846459499-4 ng-star-inserted',
+      nativePanelContent: 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
+      nativePanelHeader: 'header',
+      nativePanelTitle: 'no-select gmat-title-small',
+      nativeCloseButton: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed',
+      nativeMaterialIcon: 'material-symbols-outlined notranslate',
+      nativeSettingsWrapper: 'settings-items-wrapper',
+      nativeScrollableArea: 'scrollable-area',
+    },
+
+    // --- Host Page Tags ---
+    // Tag names of key elements on the host page.
+    tag: {
+      chatTurn: 'ms-chat-turn',
+    },
+    
+    // --- Extension-Specific IDs ---
+    // Unique IDs for elements injected by this extension.
+    id: {
+      exportButton: 'export-markdown-btn',
+      catalogButton: 'catalog-toggle-btn',
+      catalogPanel: 'catalog-side-panel',
+      catalogListContainer: 'catalog-list-container',
+    },
+
+    // --- Extension-Specific Classes ---
+    // Class names for elements injected by this extension.
+    classExt: {
+      panelVisible: 'panel-visible',
+    }
+  };
+
   let conversationHistory = null;
   let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
   let catalogData = [];
@@ -141,13 +198,13 @@
 
         // Try to find the corresponding DOM element to get its ID
         let turnElementId = null;
-        const chatTurns = document.querySelectorAll('ms-chat-turn');
+        const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
 
         // Find user turns and match by index
         let userTurnCount = 0;
         for (const chatTurn of chatTurns) {
-          const container = chatTurn.querySelector('.chat-turn-container');
-          if (container && container.classList.contains('user')) {
+          const container = chatTurn.querySelector(SELECTORS.query.chatTurnContainer);
+          if (container && container.classList.contains(SELECTORS.class.userTurn)) {
             if (userTurnCount === userPrompts.length) {
               // This is the DOM element for current user prompt
               turnElementId = chatTurn.id;
@@ -230,7 +287,7 @@
    */
   function setupConversationObserver() {
     // Find the conversation container
-    const conversationContainer = document.querySelector('body');
+    const conversationContainer = document.querySelector(SELECTORS.query.conversationObserverTarget);
     if (!conversationContainer) {
       return;
     }
@@ -244,8 +301,8 @@
         if (mutation.type === 'childList') {
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === Node.ELEMENT_NODE) {
-              if (node.tagName === 'MS-CHAT-TURN' || 
-                  node.querySelector && node.querySelector('ms-chat-turn')) {
+              if (node.tagName.toLowerCase() === SELECTORS.tag.chatTurn || 
+                  node.querySelector && node.querySelector(SELECTORS.query.chatTurn)) {
                 shouldValidate = true;
               }
             }
@@ -319,7 +376,7 @@
       console.log('Falling back to index-based navigation');
 
       // Find all ms-chat-turn elements (Google AI Studio's conversation structure)
-      const chatTurns = document.querySelectorAll('ms-chat-turn');
+      const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
       console.log('Found', chatTurns.length, 'ms-chat-turn elements');
 
       if (chatTurns.length === 0) {
@@ -330,8 +387,8 @@
       // Extract user turns only by looking for "user" class
       const userTurns = [];
       chatTurns.forEach((turn, index) => {
-        const container = turn.querySelector('.chat-turn-container');
-        if (container && container.classList.contains('user')) {
+        const container = turn.querySelector(SELECTORS.query.chatTurnContainer);
+        if (container && container.classList.contains(SELECTORS.class.userTurn)) {
           userTurns.push({
             element: turn,
             domIndex: index
@@ -404,31 +461,31 @@
   function createCatalogPanel() {
     // Create the main container with the same classes as the native one
     const panel = document.createElement('ms-right-side-panel');
-    panel.id = 'catalog-side-panel';
+    panel.id = SELECTORS.id.catalogPanel;
     // Add native classes for styling and structure
-    panel.className = 'ng-tns-c1846459499-4 ng-star-inserted';
+    panel.className = SELECTORS.class.nativePanelBase;
     // No initial class needed, default CSS state is hidden
 
     // Create the inner content container that handles the slide-in animation
     const contentContainer = document.createElement('div');
-    contentContainer.className = 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted';
+    contentContainer.className = SELECTORS.class.nativePanelContent;
 
     // Create the panel header
     const header = document.createElement('div');
-    header.className = 'header'; // Match prompt gallery
+    header.className = SELECTORS.class.nativePanelHeader; // Match prompt gallery
 
     const title = document.createElement('h2');
-    title.className = 'no-select gmat-title-small';
+    title.className = SELECTORS.class.nativePanelTitle;
     title.textContent = chrome.i18n.getMessage('catalogHeader');
 
     // Create the close button
     const closeButton = document.createElement('button');
-    closeButton.className = 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed'; // Match prompt gallery
+    closeButton.className = SELECTORS.class.nativeCloseButton; // Match prompt gallery
     closeButton.setAttribute('aria-label', 'Close catalog panel');
     closeButton.addEventListener('click', () => toggleCatalog(false)); // Explicitly close
 
     const closeIcon = document.createElement('span');
-    closeIcon.className = 'material-symbols-outlined notranslate';
+    closeIcon.className = SELECTORS.class.nativeMaterialIcon;
     closeIcon.textContent = 'close';
 
     // Assemble the header
@@ -438,12 +495,12 @@
 
     // Create the scrollable content area
     const settingsWrapper = document.createElement('div');
-    settingsWrapper.className = 'settings-items-wrapper';
+    settingsWrapper.className = SELECTORS.class.nativeSettingsWrapper;
     settingsWrapper.setAttribute('msscrollableindicatorcontainer', '');
 
     const scrollableArea = document.createElement('div');
-    scrollableArea.className = 'scrollable-area';
-    scrollableArea.id = 'catalog-list-container'; // Keep this ID for rendering the list
+    scrollableArea.className = SELECTORS.class.nativeScrollableArea;
+    scrollableArea.id = SELECTORS.id.catalogListContainer; // Keep this ID for rendering the list
     scrollableArea.setAttribute('msscrollable', '');
 
     // Assemble the panel
@@ -505,7 +562,7 @@
    * Render prompt list in the catalog panel
    */
   function renderPromptList() {
-    const listContainer = document.getElementById('catalog-list-container');
+    const listContainer = document.getElementById(SELECTORS.id.catalogListContainer);
     if (!listContainer) {
       return;
     }
@@ -530,34 +587,34 @@
    * @param {boolean} [forceShow] - Force a specific state. Toggles if undefined.
    */
   function toggleCatalog(forceShow) {
-    const catalogPanel = document.getElementById('catalog-side-panel');
-    const catalogButton = document.getElementById('catalog-toggle-btn');
+    const catalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
+    const catalogButton = document.getElementById(SELECTORS.id.catalogButton);
     if (!catalogPanel || !catalogButton) return;
 
-    const isVisible = catalogPanel.classList.contains('panel-visible');
+    const isVisible = catalogPanel.classList.contains(SELECTORS.classExt.panelVisible);
     const shouldShow = forceShow !== undefined ? forceShow : !isVisible;
 
     if (shouldShow === isVisible) return; // No change needed
 
     if (shouldShow) {
         // --- SHOW CATALOG ---
-        const sideToggles = document.querySelector('.toggles-container');
-        const nativeButtons = sideToggles?.querySelectorAll('button[aria-label*="settings"], button[aria-label*="gallery"]');
+        const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
+        const nativeButtons = sideToggles?.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
         nativeButtons?.forEach(btn => {
-            if (btn.classList.contains('right-side-panel-button-highlight')) {
+            if (btn.classList.contains(SELECTORS.class.nativeButtonHighlighted)) {
                 btn.click();
             }
         });
 
         renderPromptList();
-        catalogPanel.classList.add('panel-visible');
-        catalogButton.classList.add('right-side-panel-button-highlight');
+        catalogPanel.classList.add(SELECTORS.classExt.panelVisible);
+        catalogButton.classList.add(SELECTORS.class.nativeButtonHighlighted);
         catalogVisible = true;
 
     } else {
         // --- HIDE CATALOG ---
-        catalogPanel.classList.remove('panel-visible');
-        catalogButton.classList.remove('right-side-panel-button-highlight');
+        catalogPanel.classList.remove(SELECTORS.classExt.panelVisible);
+        catalogButton.classList.remove(SELECTORS.class.nativeButtonHighlighted);
         catalogVisible = false;
     }
   }
@@ -570,26 +627,26 @@
     const currentUrl = window.location.href;
 
     if (!targetUrlPattern.test(currentUrl)) {
-      const existingButton = document.getElementById('export-markdown-btn');
+      const existingButton = document.getElementById(SELECTORS.id.exportButton);
       if (existingButton) existingButton.remove();
-      const existingCatalogButton = document.getElementById('catalog-toggle-btn');
+      const existingCatalogButton = document.getElementById(SELECTORS.id.catalogButton);
       if (existingCatalogButton) existingCatalogButton.remove();
-      const existingCatalogPanel = document.getElementById('catalog-side-panel');
+      const existingCatalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
       if (existingCatalogPanel) existingCatalogPanel.remove();
       return;
     }
 
     const injectionInterval = setInterval(() => {
-      const toolbar = document.querySelector('ms-toolbar .toolbar-container');
-      const sideToggles = document.querySelector('.toggles-container');
+      const toolbar = document.querySelector(SELECTORS.query.toolbar);
+      const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
 
       if (toolbar && sideToggles) {
         clearInterval(injectionInterval);
 
         // --- Inject Export Button (top bar) ---
-        if (!document.getElementById('export-markdown-btn')) {
+        if (!document.getElementById(SELECTORS.id.exportButton)) {
           const exportButton = document.createElement('button');
-          exportButton.id = 'export-markdown-btn';
+          exportButton.id = SELECTORS.id.exportButton;
           exportButton.className = 'custom-toolbar-button'; // Use shared class
 
           const exportIcon = document.createElement('span');
@@ -604,15 +661,15 @@
 
           exportButton.addEventListener('click', exportToMarkdown);
 
-          const moreButton = toolbar.querySelector('button[aria-label="View more actions"]');
+          const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
           if (moreButton) toolbar.insertBefore(exportButton, moreButton);
           else toolbar.appendChild(exportButton);
         }
 
         // --- Inject Catalog Button (right side) ---
-        if (!document.getElementById('catalog-toggle-btn')) {
+        if (!document.getElementById(SELECTORS.id.catalogButton)) {
           const catalogButton = document.createElement('button');
-          catalogButton.id = 'catalog-toggle-btn';
+          catalogButton.id = SELECTORS.id.catalogButton;
           catalogButton.className = 'custom-toolbar-button'; // Use shared class
 
           const catalogIcon = document.createElement('span');
@@ -634,16 +691,16 @@
         }
 
         // --- Inject Catalog Panel (hidden) ---
-        if (!document.getElementById('catalog-side-panel')) {
+        if (!document.getElementById(SELECTORS.id.catalogPanel)) {
           const panel = createCatalogPanel();
-          const nativePanelContainer = document.querySelector('ms-right-side-panel');
+          const nativePanelContainer = document.querySelector(SELECTORS.query.nativeSidePanel);
           if(nativePanelContainer) {
              nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
           }
         }
 
         // Add listeners to all native sidebar buttons to close our panel
-        const nativeSidebarButtons = sideToggles.querySelectorAll('button[aria-label*="settings"], button[aria-label*="gallery"]');
+        const nativeSidebarButtons = sideToggles.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
         nativeSidebarButtons.forEach(button => {
             button.addEventListener('click', () => {
                 toggleCatalog(false); // Force-close our panel
