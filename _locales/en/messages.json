@@ -1,10 +1,10 @@
 {
   "extensionName": {
-    "message": "Google AI Studio Markdown Copier",
+    "message": "AI Studio Enhancer",
     "description": "The name of the extension."
   },
   "extensionDescription": {
-    "message": "One-click copy of the complete Google AI Studio conversation into structured Markdown format.",
+    "message": " Enhances Google AI Studio with one-click Markdown copy and a conversation catalog for easy navigation.",
     "description": "The description of the extension."
   },
   "tooltipCopyMarkdown": {

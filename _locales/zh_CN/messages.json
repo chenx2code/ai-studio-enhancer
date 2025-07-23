@@ -1,10 +1,10 @@
 {
   "extensionName": {
-    "message": "Google AI Studio Markdown Copier",
+    "message": "AI Studio Enhancer",
     "description": "插件的名称。"
   },
   "extensionDescription": {
-    "message": "一键将 Google AI Studio 完整对话复制为结构化的 Markdown 格式，方便保存和分享。",
+    "message": "增强 Google AI Studio 使用体验，一键复制完整对话为 Markdown 格式，并通过对话目录在长篇会话中快速跳转和定位。",
     "description": "插件的描述。"
   },
   "tooltipCopyMarkdown": {
