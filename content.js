@@ -87,7 +87,6 @@
     if (event.source === window && event.data && event.data.type === 'FROM_INTERCEPTOR') {
 
       const data = event.data.payload;
-      console.log(data);
       const apiKeyword = event.data.apiKeyword;
 
       try {
@@ -247,7 +246,6 @@
   function updateCatalogData(conversationTurns) {
     try {
       catalogData = extractUserPrompts(conversationTurns);
-      console.log('Catalog updated with', catalogData.length, 'user prompts');
 
       // If catalog is currently visible, re-render the prompt list
       if (catalogVisible) {
@@ -281,7 +279,6 @@
     });
 
     if (validItems.length !== catalogData.length) {
-      console.log(`Catalog validation: ${catalogData.length - validItems.length} items removed due to deleted DOM elements`);
       catalogData = validItems;
       
       // Re-render catalog if visible
@@ -320,7 +317,6 @@
       });
 
       if (shouldValidate) {
-        console.log('Detected conversation changes, validating catalog data...');
         // Use setTimeout to ensure DOM changes are complete
         setTimeout(validateCatalogData, 100);
       }
@@ -331,8 +327,6 @@
       childList: true,
       subtree: true
     });
-
-    console.log('Conversation observer set up successfully');
   }
 
   /**
@@ -345,25 +339,17 @@
    */
   function navigateToPrompt(turnIndex) {
     try {
-      console.log('=== Navigation Debug Info ===');
-      console.log('Attempting to navigate to turn index:', turnIndex);
-
       // Find the catalog item that corresponds to this turnIndex
       const catalogItem = catalogData.find(item => item.turnIndex === turnIndex);
       if (!catalogItem) {
         console.warn('Could not find catalog item for turn index:', turnIndex);
         return;
       }
-      console.log('Target catalog item:', catalogItem);
 
       // Use direct ID-based navigation if available
       if (catalogItem.turnElementId) {
-        console.log('Using direct ID navigation for element:', catalogItem.turnElementId);
-
         const targetElement = document.getElementById(catalogItem.turnElementId);
         if (targetElement) {
-          console.log('Found target element by ID:', targetElement);
-
           // Scroll to the target element with smooth behavior
           targetElement.scrollIntoView({
             behavior: 'smooth',
@@ -373,8 +359,6 @@
 
           // Add visual highlight to indicate the navigated-to element
           highlightElement(targetElement);
-
-          console.log('Successfully navigated to user prompt using ID:', catalogItem.turnElementId);
           return;
         } else {
           console.warn('Could not find element with ID:', catalogItem.turnElementId);
@@ -382,11 +366,8 @@
       }
 
       // Fallback to index-based navigation if ID method fails
-      console.log('Falling back to index-based navigation');
-
       // Find all ms-chat-turn elements (Google AI Studio's conversation structure)
       const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
-      console.log('Found', chatTurns.length, 'ms-chat-turn elements');
 
       if (chatTurns.length === 0) {
         console.warn('Could not find ms-chat-turn elements for navigation');
@@ -405,15 +386,11 @@
         }
       });
 
-      console.log('Found', userTurns.length, 'user turns at DOM indices:', userTurns.map(t => t.domIndex));
-
       // Find the catalog item's position in our user-only list
       const catalogItemIndex = catalogData.findIndex(item => item.turnIndex === turnIndex);
-      console.log('Catalog item index:', catalogItemIndex, 'Total catalog items:', catalogData.length);
 
       if (catalogItemIndex >= 0 && catalogItemIndex < userTurns.length) {
         const targetTurn = userTurns[catalogItemIndex];
-        console.log('Navigating to user turn at catalog index:', catalogItemIndex, 'DOM index:', targetTurn.domIndex);
 
         // Scroll to the target element with smooth behavior
         targetTurn.element.scrollIntoView({
@@ -424,8 +401,6 @@
 
         // Add visual highlight to indicate the navigated-to element
         highlightElement(targetTurn.element);
-
-        console.log('Successfully navigated to user prompt at turn index:', turnIndex);
       } else {
         console.warn('Could not map catalog item to DOM element. Catalog index:', catalogItemIndex, 'Available user turns:', userTurns.length);
       }
