@@ -551,6 +551,13 @@
 
     // Add click event handler for navigation
     listItem.addEventListener('click', function () {
+      // Remove selected class from all other items
+      const allItems = document.querySelectorAll('.catalog-list-item');
+      allItems.forEach(item => item.classList.remove('catalog-item-selected'));
+
+      // Add selected class to the clicked item
+      listItem.classList.add('catalog-item-selected');
+
       navigateToPrompt(catalogItem.turnIndex);
       // Optional: close panel after navigation
       // toggleCatalog(false); 
