@@ -39,9 +39,11 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 ## 💡 How to Use
 
-### :exclamation: Important Prerequisite: Enable Autosave
+### :exclamation: Important Prerequisite: Ensure Your Conversation is Saved
 
-**Please note:** To ensure this extension works correctly, you **must** enable the **"Autosave"** feature in your Google AI Studio settings. (This extension relies on the internal data updates triggered by AI Studio's autosave to capture the most complete conversation history. If autosave is not enabled, the extension will not be able to retrieve real-time conversation content, leading to functionality failure or incomplete content.)
+**Please note:** To ensure this extension can retrieve the latest content, you must first confirm that your conversation is fully saved. Look for the **"Saved to Drive"** status indicator. For convenience, you can enable the **"Autosave"** feature in the settings. (This extension relies on the internal data update triggered by the save action to access the complete conversation history.)
+
+![SavedtoDrive](https://github.com/user-attachments/assets/001a5ff4-26a0-49e8-9b29-25221ca90356)
 
 ![Autosave](https://github.com/user-attachments/assets/acf72302-dc3d-4a45-b6a4-5e8e30050dd6)
 

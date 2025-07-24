@@ -37,9 +37,11 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 
 ## 💡 如何使用
 
-### :exclamation: 重要前提：启用自动保存
+### :exclamation: 重要前提：确保对话已保存
 
-**请注意：** 为了确保本扩展能够正常工作，您 **必须** 在 Google AI Studio 的设置中启用 **"自动保存"（Autosave）** 功能。(本扩展依赖于 AI Studio 自动保存时触发的内部数据更新来捕获最完整的对话历史。如果未开启自动保存，扩展将无法获取实时对话内容，导致功能失效或内容不完整。)
+**请注意：** 为确保本扩展能获取最新内容，您必须首先确认您的对话在 Google AI Studio 中已完全保存。请留意**"Saved to Drive"**的状态提示。当然，为了方便起见，您可以在设置中启用 **"自动保存"（Autosave）** 功能。(本扩展依赖于 AI Studio 保存时触发的内部数据更新来捕获最完整的对话历史。)
+
+![SavedtoDrive](https://github.com/user-attachments/assets/001a5ff4-26a0-49e8-9b29-25221ca90356)
 
 ![Autosave](https://github.com/user-attachments/assets/acf72302-dc3d-4a45-b6a4-5e8e30050dd6)
 
