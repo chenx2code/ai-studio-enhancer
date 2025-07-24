@@ -41,9 +41,9 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 
 **请注意：** 为了确保本扩展能够正常工作，您 **必须** 在 Google AI Studio 的设置中启用 **"自动保存"（Autosave）** 功能。(本扩展依赖于 AI Studio 自动保存时触发的内部数据更新来捕获最完整的对话历史。如果未开启自动保存，扩展将无法获取实时对话内容，导致功能失效或内容不完整。)
 
-![screenshot-0](./assets/screenshot-0.png)
+![Autosave](https://github.com/user-attachments/assets/acf72302-dc3d-4a45-b6a4-5e8e30050dd6)
 
-
+---
 
 ### 📋 Markdown 导出
 
@@ -52,9 +52,7 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 3.  浏览器会弹窗提示"对话已成功复制！"。
 4.  现在，Markdown 格式的对话内容已经在您的剪贴板里了。您可以将其粘贴到任何文本编辑器（如 Typora, VS Code）、笔记软件或需要使用该内容的地方。
 
-![markdown_copy](./assets/markdown_copy.gif)
-
-
+<video src="https://github.com/user-attachments/assets/9b7db6ac-3912-4844-bd21-b6a085b15ea1"></video>
 
 ---
 
@@ -66,7 +64,9 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 4.  跳转时会有蓝色高亮效果标示目标位置。
 5.  再次点击列表图标或点击目录面板的关闭按钮可以关闭目录。
 
-![catalog](./assets/catalog.gif)
+<video src="https://github.com/user-attachments/assets/d953b424-9503-4969-82c6-e032a2ff5c4a"></video>
+
+
 
 ---
 
