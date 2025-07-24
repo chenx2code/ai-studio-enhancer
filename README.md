@@ -39,11 +39,15 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 ## 💡 How to Use
 
-### :exclamation: Important Prerequisite: Enable Autosave
+### :exclamation: Important Prerequisite: Ensure Your Conversation is Saved
 
-**Please note:** To ensure this extension works correctly, you **must** enable the **"Autosave"** feature in your Google AI Studio settings. (This extension relies on the internal data updates triggered by AI Studio's autosave to capture the most complete conversation history. If autosave is not enabled, the extension will not be able to retrieve real-time conversation content, leading to functionality failure or incomplete content.)
+**Please note:** To ensure this extension can retrieve the latest content, you must first confirm that your conversation is fully saved. Look for the **"Saved to Drive"** status indicator. For convenience, you can enable the **"Autosave"** feature in the settings. (This extension relies on the internal data update triggered by the save action to access the complete conversation history.)
 
-![screenshot-0](./assets/screenshot-0.png)
+![SavedtoDrive](https://github.com/user-attachments/assets/001a5ff4-26a0-49e8-9b29-25221ca90356)
+
+![Autosave](https://github.com/user-attachments/assets/acf72302-dc3d-4a45-b6a4-5e8e30050dd6)
+
+---
 
 
 
@@ -54,7 +58,7 @@ Main use cases include conversation archiving, content referencing, interaction 
 3.  The browser will show a popup notification "Conversation copied successfully!".
 4.  Now, the Markdown-formatted conversation content is in your clipboard. You can paste it into any text editor (like Typora, VS Code), note-taking software, or wherever you need to use the content.
 
-![markdown_copy](./assets/markdown_copy.gif)
+<video src="https://github.com/user-attachments/assets/9b7db6ac-3912-4844-bd21-b6a085b15ea1"></video>
 
 
 
@@ -68,11 +72,9 @@ Main use cases include conversation archiving, content referencing, interaction 
 4.  A blue highlight effect will mark the target position during navigation.
 5.  Click the list icon again or the close button in the catalog panel to close the catalog.
 
-![catalog](./assets/catalog.gif)
+<video src="https://github.com/user-attachments/assets/d953b424-9503-4969-82c6-e032a2ff5c4a"></video>
 
 ---
-
-
 
 ## 🚀 Installation Methods
 
@@ -129,7 +131,5 @@ If you find any bugs, have improvement suggestions, or want to add new features,
 ## 📄 License
 
 This project is licensed under the terms of the [MIT License](LICENSE).
-
-
 
 
