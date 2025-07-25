@@ -29,7 +29,7 @@
       nativePanelBase: 'ng-tns-c1846459499-4 ng-star-inserted',
       nativePanelContent: 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
       nativePanelHeader: 'header',
-      nativePanelTitle: 'no-select gmat-title-small',
+      nativePanelTitle: 'no-select v3-font-headline-2',
       nativeCloseButton: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed',
       nativeMaterialIcon: 'material-symbols-outlined notranslate',
       nativeSettingsWrapper: 'settings-items-wrapper',
