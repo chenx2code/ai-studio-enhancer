@@ -24,7 +24,7 @@
     // Class names used by the native UI that we need to interact with or mimic.
     class: {
       userTurn: 'user',
-      nativeButtonHighlighted: 'right-side-panel-button-highlight',
+      nativeButtonHighlighted: 'active', // The class AI Studio uses for active side panel toggles
       // Classes mimicked from the native UI for consistent styling
       nativePanelBase: 'ng-tns-c1846459499-4 ng-star-inserted',
       nativePanelContent: 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
@@ -708,9 +708,16 @@
           // Inject Catalog Panel (hidden)
           if (!document.getElementById(SELECTORS.id.catalogPanel)) {
             const panel = createCatalogPanel();
-            const nativePanelContainer = document.querySelector(SELECTORS.query.nativeSidePanel);
+            // The original injection logic placed the panel in the correct visual position,
+            // but the selector was unreliable. We now use a more stable element (sideToggles)
+            // to find the correct native panel container to insert our panel next to.
+            const nativePanelContainer = sideToggles.closest(SELECTORS.query.nativeSidePanel);
             if (nativePanelContainer && nativePanelContainer.parentElement) {
-               nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+              // By inserting the panel as a sibling to the native one, we ensure
+              // that the existing CSS for positioning works as intended.
+              nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+            } else {
+              console.warn('Markdown Copier: Could not find a stable injection point for the Catalog panel.');
             }
           }
 
