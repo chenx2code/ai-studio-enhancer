@@ -677,10 +677,12 @@
             );
 
             const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
-            if (moreButton) {
-              toolbar.insertBefore(exportButton, moreButton);
+            // The "more actions" button is nested inside another div, so we need to
+            // insert the new button relative to its parent, not the main toolbar.
+            if (moreButton && moreButton.parentElement) {
+              moreButton.parentElement.insertBefore(exportButton, moreButton);
             } else {
-              toolbar.appendChild(exportButton);
+              toolbar.appendChild(exportButton); // Fallback
             }
           }
         } else {
