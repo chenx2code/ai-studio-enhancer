@@ -14,7 +14,7 @@
       sideTogglesContainer: '.toggles-container',
       moreActionsButton: 'button[aria-label="View more actions"]',
       nativeSidePanel: 'ms-right-side-panel',
-      nativeSidePanelButtons: 'button[aria-label*="settings"], button[aria-label*="gallery"]',
+      nativeSidePanelButtons: 'button[aria-label*="settings"], button[aria-label*="gallery"], button[aria-label*="Run settings"], button[aria-label*="Prompt gallery"]',
       chatTurn: 'ms-chat-turn',
       chatTurnContainer: '.chat-turn-container',
       conversationObserverTarget: 'body',
@@ -24,10 +24,10 @@
     // Class names used by the native UI that we need to interact with or mimic.
     class: {
       userTurn: 'user',
-      nativeButtonHighlighted: 'right-side-panel-button-highlight',
+      nativeButtonHighlighted: 'active', // The class AI Studio uses for active side panel toggles
       // Classes mimicked from the native UI for consistent styling
-      nativePanelBase: 'ng-tns-c1846459499-4 ng-star-inserted',
-      nativePanelContent: 'content-container ng-tns-c1846459499-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
+      nativePanelBase: 'ng-tns-c954911444-4 ng-star-inserted',
+      nativePanelContent: 'content-container ng-tns-c954911444-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
       nativePanelHeader: 'header',
       nativePanelTitle: 'no-select v3-font-headline-2',
       nativeCloseButton: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed',
@@ -41,7 +41,7 @@
     tag: {
       chatTurn: 'ms-chat-turn',
     },
-    
+
     // --- Extension-Specific IDs ---
     // Unique IDs for elements injected by this extension.
     id: {
@@ -188,20 +188,20 @@
 
         // Handle different content types
         if (textContent && textContent.trim()) {
-            // Text prompt
-            promptText = textContent.trim();
-            contentType = 'text';
+          // Text prompt
+          promptText = textContent.trim();
+          contentType = 'text';
         } else if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-            // Image prompt (when turn[0] is empty but turn[1] has content)
-            promptText = '[Image]';
-            contentType = 'image';
+          // Image prompt (when turn[0] is empty but turn[1] has content)
+          promptText = '[Image]';
+          contentType = 'image';
         } else {
-            // Fallback for other content types like documents/files.
-            // Instead of skipping the turn, we create a placeholder entry.
-            // This is crucial for keeping the catalog index synchronized with the
-            // actual number of user prompts in the DOM, fixing navigation.
-            promptText = '[File]';
-            contentType = 'file';
+          // Fallback for other content types like documents/files.
+          // Instead of skipping the turn, we create a placeholder entry.
+          // This is crucial for keeping the catalog index synchronized with the
+          // actual number of user prompts in the DOM, fixing navigation.
+          promptText = '[File]';
+          contentType = 'file';
         }
 
         // Try to find the corresponding DOM element to get its ID
@@ -280,7 +280,7 @@
 
     if (validItems.length !== catalogData.length) {
       catalogData = validItems;
-      
+
       // Re-render catalog if visible
       if (catalogVisible) {
         renderPromptList();
@@ -301,14 +301,14 @@
     // Create mutation observer to watch for DOM changes
     const observer = new MutationObserver((mutations) => {
       let shouldValidate = false;
-      
+
       mutations.forEach((mutation) => {
         // Check if any ms-chat-turn elements were removed
         if (mutation.type === 'childList') {
           mutation.removedNodes.forEach((node) => {
             if (node.nodeType === Node.ELEMENT_NODE) {
-              if (node.tagName.toLowerCase() === SELECTORS.tag.chatTurn || 
-                  node.querySelector && node.querySelector(SELECTORS.query.chatTurn)) {
+              if (node.tagName.toLowerCase() === SELECTORS.tag.chatTurn ||
+                node.querySelector && node.querySelector(SELECTORS.query.chatTurn)) {
                 shouldValidate = true;
               }
             }
@@ -462,18 +462,30 @@
     title.className = SELECTORS.class.nativePanelTitle;
     title.textContent = chrome.i18n.getMessage('catalogHeader');
 
-    // Create the close button
+    // Create the close button, replicating the new native structure precisely
     const closeButton = document.createElement('button');
-    closeButton.className = SELECTORS.class.nativeCloseButton; // Match prompt gallery
+    closeButton.className = 'close-button icon';
+    closeButton.setAttribute('ms-button', '');
+    closeButton.setAttribute('variant', 'icon');
+    closeButton.setAttribute('iconname', 'close');
     closeButton.setAttribute('aria-label', 'Close catalog panel');
-    closeButton.addEventListener('click', () => toggleCatalog(false)); // Explicitly close
+    closeButton.setAttribute('aria-disabled', 'false');
+    closeButton.addEventListener('click', () => toggleCatalog(false));
+
+    // The native button has an extra wrapper span, which is crucial for styling
+    const iconWrapper = document.createElement('span');
+    iconWrapper.className = 'ms-button-icon-wrapper';
 
     const closeIcon = document.createElement('span');
     closeIcon.className = SELECTORS.class.nativeMaterialIcon;
     closeIcon.textContent = 'close';
+    closeIcon.setAttribute('aria-hidden', 'true');
+
+    // Assemble the button: icon -> wrapper -> button
+    iconWrapper.appendChild(closeIcon);
+    closeButton.appendChild(iconWrapper);
 
     // Assemble the header
-    closeButton.appendChild(closeIcon);
     header.appendChild(title);
     header.appendChild(closeButton);
 
@@ -514,12 +526,12 @@
 
     // Display appropriate content based on content type
     if (catalogItem.contentType === 'text') {
-        promptText.textContent = catalogItem.truncatedText;
+      promptText.textContent = catalogItem.truncatedText;
     } else {
-        // For non-text prompts ('image', 'file'), use the full text (e.g., '[Image]')
-        // and apply special styling.
-        promptText.textContent = catalogItem.promptText;
-        promptText.classList.add('catalog-image-prompt');
+      // For non-text prompts ('image', 'file'), use the full text (e.g., '[Image]')
+      // and apply special styling.
+      promptText.textContent = catalogItem.promptText;
+      promptText.classList.add('catalog-image-prompt');
     }
 
     listItem.appendChild(promptText);
@@ -588,25 +600,25 @@
     if (shouldShow === isVisible) return; // No change needed
 
     if (shouldShow) {
-        // --- SHOW CATALOG ---
-        const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
-        const nativeButtons = sideToggles?.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
-        nativeButtons?.forEach(btn => {
-            if (btn.classList.contains(SELECTORS.class.nativeButtonHighlighted)) {
-                btn.click();
-            }
-        });
+      // --- SHOW CATALOG ---
+      const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
+      const nativeButtons = sideToggles?.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
+      nativeButtons?.forEach(btn => {
+        if (btn.classList.contains(SELECTORS.class.nativeButtonHighlighted)) {
+          btn.click();
+        }
+      });
 
-        renderPromptList();
-        catalogPanel.classList.add(SELECTORS.classExt.panelVisible);
-        catalogButton.classList.add(SELECTORS.class.nativeButtonHighlighted);
-        catalogVisible = true;
+      renderPromptList();
+      catalogPanel.classList.add(SELECTORS.classExt.panelVisible);
+      catalogButton.classList.add(SELECTORS.class.nativeButtonHighlighted);
+      catalogVisible = true;
 
     } else {
-        // --- HIDE CATALOG ---
-        catalogPanel.classList.remove(SELECTORS.classExt.panelVisible);
-        catalogButton.classList.remove(SELECTORS.class.nativeButtonHighlighted);
-        catalogVisible = false;
+      // --- HIDE CATALOG ---
+      catalogPanel.classList.remove(SELECTORS.classExt.panelVisible);
+      catalogButton.classList.remove(SELECTORS.class.nativeButtonHighlighted);
+      catalogVisible = false;
     }
   }
 
@@ -677,10 +689,12 @@
             );
 
             const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
-            if (moreButton) {
-              toolbar.insertBefore(exportButton, moreButton);
+            // The "more actions" button is nested inside another div, so we need to
+            // insert the new button relative to its parent, not the main toolbar.
+            if (moreButton && moreButton.parentElement) {
+              moreButton.parentElement.insertBefore(exportButton, moreButton);
             } else {
-              toolbar.appendChild(exportButton);
+              toolbar.appendChild(exportButton); // Fallback
             }
           }
         } else {
@@ -691,7 +705,7 @@
         if (sideToggles) {
           // Inject Catalog Button
           if (!document.getElementById(SELECTORS.id.catalogButton)) {
-             const catalogButton = createToolbarButton(
+            const catalogButton = createToolbarButton(
               SELECTORS.id.catalogButton,
               'list',
               chrome.i18n.getMessage('tooltipCatalog'),
@@ -706,18 +720,25 @@
           // Inject Catalog Panel (hidden)
           if (!document.getElementById(SELECTORS.id.catalogPanel)) {
             const panel = createCatalogPanel();
-            const nativePanelContainer = document.querySelector(SELECTORS.query.nativeSidePanel);
+            // The original injection logic placed the panel in the correct visual position,
+            // but the selector was unreliable. We now use a more stable element (sideToggles)
+            // to find the correct native panel container to insert our panel next to.
+            const nativePanelContainer = sideToggles.closest(SELECTORS.query.nativeSidePanel);
             if (nativePanelContainer && nativePanelContainer.parentElement) {
-               nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+              // By inserting the panel as a sibling to the native one, we ensure
+              // that the existing CSS for positioning works as intended.
+              nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+            } else {
+              console.warn('Markdown Copier: Could not find a stable injection point for the Catalog panel.');
             }
           }
 
           // Add listeners to all native sidebar buttons to close our panel
           const nativeSidebarButtons = sideToggles.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
           nativeSidebarButtons.forEach(button => {
-              button.addEventListener('click', () => {
-                  toggleCatalog(false); // Force-close our panel
-              });
+            button.addEventListener('click', () => {
+              toggleCatalog(false); // Force-close our panel
+            });
           });
         } else {
           console.warn('Markdown Copier: Could not find side toggles to inject Catalog feature.');
@@ -728,7 +749,7 @@
 
   function initialize() {
     checkAndInjectButton();
-    
+
     // Set up conversation observer to handle deletions
     setupConversationObserver();
 
