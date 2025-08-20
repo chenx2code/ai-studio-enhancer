@@ -24,7 +24,7 @@
     // Class names used by the native UI that we need to interact with or mimic.
     class: {
       userTurn: 'user',
-      nativeButtonHighlighted: 'active', // The class AI Studio uses for active side panel toggles
+      nativeButtonHighlighted: 'ms-button-active', // The class AI Studio uses for active side panel toggles
       // Classes mimicked from the native UI for consistent styling
       nativePanelBase: 'ng-tns-c954911444-4 ng-star-inserted',
       nativePanelContent: 'content-container ng-tns-c954911444-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
