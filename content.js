@@ -753,11 +753,25 @@
     // Set up conversation observer to handle deletions
     setupConversationObserver();
 
-    // Monitor URL changes for single-page applications
+    // Monitor URL changes and UI presence for single-page applications
     let lastUrl = window.location.href;
     const observer = new MutationObserver(() => {
-      if (window.location.href !== lastUrl) {
-        lastUrl = window.location.href;
+      const currentUrl = window.location.href;
+
+      // 1. Handle URL changes (existing logic)
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        checkAndInjectButton();
+        return; // Injection logic started, no need for further checks in this mutation.
+      }
+
+      // 2. Guardian check: If URL is the same, but UI is gone, re-inject.
+      const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
+      const isOnTargetPage = targetUrlPattern.test(currentUrl);
+      const uiElementExists = document.getElementById(SELECTORS.id.exportButton);
+
+      if (isOnTargetPage && !uiElementExists) {
+        // The UI was likely removed by a soft refresh, trigger injection again.
         checkAndInjectButton();
       }
     });
