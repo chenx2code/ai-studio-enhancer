@@ -127,14 +127,14 @@
       alert(chrome.i18n.getMessage('errorNoDataSource'));
       return;
     }
-    let markdownOutput = `# ${promptTitle}\n\n`;
+    let markdownOutput = '# ' + promptTitle + '\n\n';
     conversationHistory.forEach(turn => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const content = turn[0] || '';
       const role = turn[8];
       const finalContent = turn[2] && typeof turn[2] === 'string' ? turn[2] : content;
-      if (role === 'user' && content) markdownOutput += `## ${content}\n\n`;
-      else if (role === 'model' && finalContent) markdownOutput += `${finalContent}\n\n---\n\n`;
+      if (role === 'user' && content) markdownOutput += '## ' + content + '\n\n';
+      else if (role === 'model' && finalContent) markdownOutput += finalContent + '\n\n---\n\n';
     });
     navigator.clipboard.writeText(markdownOutput.trim()).then(() => {
       alert(chrome.i18n.getMessage('successCopied'));
