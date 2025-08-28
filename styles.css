@@ -1,39 +1,11 @@
 /*
- * 1. Base style for custom buttons injected by the extension.
+ * 1. Base positioning for custom buttons.
+ *    We only need to ensure they are relatively positioned for the tooltip.
+ *    All other styling (size, color, hover) is now inherited from the native classes.
  */
-button[ms-button][variant="icon-borderless"].custom-toolbar-button {
-    position: relative; /* CRITICAL for tooltip positioning */
-}
-
+#export-markdown-btn,
 #catalog-toggle-btn {
     position: relative;
-}
-
-
-
-/*
- * 2. Shared Tooltip Style
- */
-.custom-tooltip-text {
-    background-color: #e6ecff;
-    color: rgb(26, 28, 30);
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-family: "Google Sans Text", "Helvetica Neue", sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 20px;
-    text-align: center;
-    white-space: nowrap;
-    position: absolute;
-    z-index: 1001;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%) translateY(-8px);
-    margin-top: 8px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 150ms cubic-bezier(0, 0, 0.2, 1), transform 150ms cubic-bezier(0, 0, 0.2, 1);
 }
 
 /* Hide button when its panel is open */
@@ -41,23 +13,41 @@ button[ms-button][variant="icon-borderless"].custom-toolbar-button {
     display: none !important;
 }
 
-/* Shared hover effect for borderless buttons */
-button[variant="icon-borderless"]:hover {
-    background-color: rgba(0, 0, 0, 0.08);
+/*
+ * 2. Custom Tooltip Style
+ *    This is still needed as it's a custom element.
+ */
+.custom-tooltip-text {
+    background-color: rgb(255, 255, 255);
+    color: rgb(50, 48, 44);
+    border-radius: 12px;
+    border: 0.8px solid rgb(238, 238, 236);
+    box-shadow: rgba(10, 13, 18, 0.1) 0px 1px 3px 0px, rgba(10, 13, 18, 0.1) 0px 1px 2px -1px;
+    padding: 8px 12px;
+    font-family: Inter, sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+    text-align: center;
+    white-space: nowrap;
+    position: absolute;
+    z-index: 99999;
+    top: 120%; /* Position below the button */
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease-in-out;
 }
 
-/* Shared hover effect to show the tooltip */
+/* Show the tooltip on hover */
 #export-markdown-btn:hover .custom-tooltip-text,
 #catalog-toggle-btn:hover .custom-tooltip-text {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
 }
 
-
-
 /*
- * 3. Catalog Side Panel (NEW)
- *    Styles to match the native side panels like 'Prompt gallery'.
+ * 3. Catalog Side Panel
  */
 #catalog-side-panel {
     display: flex;
@@ -67,27 +57,28 @@ button[variant="icon-borderless"]:hover {
     border-left: 1px solid rgb(224, 224, 224);
     box-sizing: border-box;
     flex-shrink: 0;
-
-    /* Animation: Hide by default by collapsing width */
     max-width: 0;
     opacity: 0;
-    overflow: hidden; /* Crucial for max-width animation */
+    overflow: hidden;
     transition: max-width 300ms cubic-bezier(0.4, 0, 0.2, 1), 
                 opacity 200ms ease-in-out;
 }
 
 #catalog-side-panel.panel-visible {
-    max-width: 300px; /* Animate to full width */
+    max-width: 300px;
     opacity: 1;
 }
 
-/* This container needs a fixed width so content doesn't wrap during animation */
+#catalog-side-panel.no-transition {
+    transition: none !important;
+}
+
 #catalog-side-panel .content-container {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    width: 300px; /* Fixed width */
+    width: 300px;
 }
 
 #catalog-side-panel .header {
@@ -99,26 +90,22 @@ button[variant="icon-borderless"]:hover {
     flex-shrink: 0;
 }
 
-/* NEW: This is the wrapper for our scrollable list. Make it grow and handle overflow. */
 #catalog-side-panel .settings-items-wrapper {
-    flex: 1; /* This will make it take all available vertical space */
-    overflow-y: auto; /* The scrollbar will appear on this container */
-    min-height: 0; /* Prevents flex item from overflowing its container */
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
-/* The list itself no longer needs height or overflow control. */
 #catalog-list-container {
     padding: 8px 0;
     box-sizing: border-box;
-    /* height: 100%; REMOVED */
-    /* overflow-y: auto; MOVED to parent wrapper */
 }
 
 /*
- * 4. Catalog List Item Styles (NEW)
+ * 4. Catalog List Item Styles
  */
 .catalog-list-item {
-    padding: 8px 24px; /* Add correct horizontal padding */
+    padding: 8px 24px;
     cursor: pointer;
     transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
@@ -129,12 +116,12 @@ button[variant="icon-borderless"]:hover {
 
 .catalog-list-item:hover,
 .catalog-list-item:focus {
-    background-color: rgba(0, 0, 0, 0.04); /* Match native hover/focus */
-    outline: none; /* Remove the default blue outline */
+    background-color: rgba(0, 0, 0, 0.04);
+    outline: none;
 }
 
 .catalog-list-item.catalog-item-selected {
-    background-color: #edf2fa; /* Use a softer blue for the selected item */
+    background-color: #edf2fa;
 }
 
 .catalog-prompt-text {
@@ -152,7 +139,7 @@ button[variant="icon-borderless"]:hover {
 }
 
 /*
- * 5. Catalog Empty State (NEW)
+ * 5. Catalog Empty State
  */
 .catalog-empty-state {
     padding: 24px;
@@ -161,9 +148,4 @@ button[variant="icon-borderless"]:hover {
     font-family: "Google Sans Text", "Helvetica Neue", sans-serif;
     font-size: 14px;
     line-height: 20px;
-}
-
-/* Utility class to temporarily disable animations */
-#catalog-side-panel.no-transition {
-    transition: none !important;
 }

@@ -608,12 +608,22 @@
   function createToolbarButton(id, iconName, tooltipText, onClick, variant = 'icon-borderless') {
     const button = document.createElement('button');
     button.id = id;
+
+    // Add attributes and classes to mimic native buttons
     button.setAttribute('ms-button', '');
     button.setAttribute('variant', variant);
     button.setAttribute('iconname', iconName);
+    button.classList.add('mat-mdc-tooltip-trigger'); // Common class for tooltips
+
+    // Apply classes based on the variant
+    if (variant === 'icon-primary') {
+      button.classList.add('ms-button-primary', 'ms-button-icon');
+    } else { // Default to icon-borderless
+      button.classList.add('ms-button-borderless', 'ms-button-icon');
+    }
 
     const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol ng-star-inserted';
+    icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol';
     icon.textContent = iconName;
     button.appendChild(icon);
 
@@ -661,11 +671,15 @@
         const catalogButton = createToolbarButton(
           SELECTORS.id.catalogButton, 'list', chrome.i18n.getMessage('tooltipCatalog'), () => { /* Handled by delegation */ }, 'icon-primary'
         );
-        const runSettingsButton = toolbarRight.querySelector(SELECTORS.query.runSettingsButton);
-        if (runSettingsButton) runSettingsButton.parentElement.insertBefore(catalogButton, runSettingsButton);
-        else {
-          const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
-          if (moreButton) moreButton.parentElement.insertBefore(catalogButton, moreButton);
+        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        if (moreButton) {
+            moreButton.after(catalogButton);
+        } else {
+            // Fallback if moreButton is not found
+            const runSettingsButton = toolbarRight.querySelector(SELECTORS.query.runSettingsButton);
+            if (runSettingsButton) {
+                runSettingsButton.parentElement.insertBefore(catalogButton, runSettingsButton);
+            }
         }
       }
 
