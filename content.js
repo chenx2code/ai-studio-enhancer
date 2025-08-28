@@ -11,10 +11,11 @@
     // Selectors for finding elements on the Google AI Studio page.
     query: {
       toolbar: 'ms-toolbar .toolbar-container',
-      sideTogglesContainer: '.toggles-container',
+      runSettingsButton: 'button[iconname="tune"]',
       moreActionsButton: 'button[aria-label="View more actions"]',
       nativeSidePanel: 'ms-right-side-panel',
-      nativeSidePanelButtons: 'button[aria-label*="settings"], button[aria-label*="gallery"], button[aria-label*="Run settings"], button[aria-label*="Prompt gallery"]',
+      nativeSidePanelCloseButton: 'ms-right-side-panel button[iconname="close"]',
+      chunkEditor: 'ms-chunk-editor',
       chatTurn: 'ms-chat-turn',
       chatTurnContainer: '.chat-turn-container',
       conversationObserverTarget: 'body',
@@ -24,13 +25,9 @@
     // Class names used by the native UI that we need to interact with or mimic.
     class: {
       userTurn: 'user',
-      nativeButtonHighlighted: 'ms-button-active', // The class AI Studio uses for active side panel toggles
       // Classes mimicked from the native UI for consistent styling
-      nativePanelBase: 'ng-tns-c954911444-4 ng-star-inserted',
-      nativePanelContent: 'content-container ng-tns-c954911444-4 ng-trigger ng-trigger-slideInOut ng-star-inserted',
       nativePanelHeader: 'header',
       nativePanelTitle: 'no-select v3-font-headline-2',
-      nativeCloseButton: 'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base close-button mat-unthemed',
       nativeMaterialIcon: 'material-symbols-outlined notranslate',
       nativeSettingsWrapper: 'settings-items-wrapper',
       nativeScrollableArea: 'scrollable-area',
@@ -55,6 +52,7 @@
     // Class names for elements injected by this extension.
     classExt: {
       panelVisible: 'panel-visible',
+      buttonHidden: 'button-hidden',
     }
   };
 
@@ -443,47 +441,37 @@
    * @returns {HTMLElement} The catalog panel element.
    */
   function createCatalogPanel() {
-    // Create the main container with the same classes as the native one
+    // Create the main container with the same tag as the native one
     const panel = document.createElement('ms-right-side-panel');
     panel.id = SELECTORS.id.catalogPanel;
-    // Add native classes for styling and structure
-    panel.className = SELECTORS.class.nativePanelBase;
-    // No initial class needed, default CSS state is hidden
 
     // Create the inner content container that handles the slide-in animation
     const contentContainer = document.createElement('div');
-    contentContainer.className = SELECTORS.class.nativePanelContent;
+    contentContainer.className = 'content-container';
 
     // Create the panel header
     const header = document.createElement('div');
-    header.className = SELECTORS.class.nativePanelHeader; // Match prompt gallery
+    header.className = SELECTORS.class.nativePanelHeader;
 
     const title = document.createElement('h2');
     title.className = SELECTORS.class.nativePanelTitle;
     title.textContent = chrome.i18n.getMessage('catalogHeader');
 
-    // Create the close button, replicating the new native structure precisely
+    // Create the close button, replicating the native structure
     const closeButton = document.createElement('button');
-    closeButton.className = 'close-button icon';
     closeButton.setAttribute('ms-button', '');
-    closeButton.setAttribute('variant', 'icon');
+    closeButton.setAttribute('variant', 'icon-borderless');
+    closeButton.setAttribute('size', 'small');
     closeButton.setAttribute('iconname', 'close');
     closeButton.setAttribute('aria-label', 'Close catalog panel');
-    closeButton.setAttribute('aria-disabled', 'false');
     closeButton.addEventListener('click', () => toggleCatalog(false));
-
-    // The native button has an extra wrapper span, which is crucial for styling
-    const iconWrapper = document.createElement('span');
-    iconWrapper.className = 'ms-button-icon-wrapper';
 
     const closeIcon = document.createElement('span');
     closeIcon.className = SELECTORS.class.nativeMaterialIcon;
     closeIcon.textContent = 'close';
     closeIcon.setAttribute('aria-hidden', 'true');
 
-    // Assemble the button: icon -> wrapper -> button
-    iconWrapper.appendChild(closeIcon);
-    closeButton.appendChild(iconWrapper);
+    closeButton.appendChild(closeIcon);
 
     // Assemble the header
     header.appendChild(title);
@@ -496,7 +484,7 @@
 
     const scrollableArea = document.createElement('div');
     scrollableArea.className = SELECTORS.class.nativeScrollableArea;
-    scrollableArea.id = SELECTORS.id.catalogListContainer; // Keep this ID for rendering the list
+    scrollableArea.id = SELECTORS.id.catalogListContainer;
     scrollableArea.setAttribute('msscrollable', '');
 
     // Assemble the panel
@@ -600,51 +588,119 @@
     if (shouldShow === isVisible) return; // No change needed
 
     if (shouldShow) {
-      // --- SHOW CATALOG ---
-      const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
-      const nativeButtons = sideToggles?.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
-      nativeButtons?.forEach(btn => {
-        if (btn.classList.contains(SELECTORS.class.nativeButtonHighlighted)) {
-          btn.click();
-        }
-      });
-
       renderPromptList();
-      catalogPanel.classList.add(SELECTORS.classExt.panelVisible);
-      catalogButton.classList.add(SELECTORS.class.nativeButtonHighlighted);
-      catalogVisible = true;
+    }
 
-    } else {
-      // --- HIDE CATALOG ---
-      catalogPanel.classList.remove(SELECTORS.classExt.panelVisible);
-      catalogButton.classList.remove(SELECTORS.class.nativeButtonHighlighted);
-      catalogVisible = false;
+    catalogPanel.classList.toggle(SELECTORS.classExt.panelVisible, shouldShow);
+    catalogButton.classList.toggle(SELECTORS.classExt.buttonHidden, shouldShow);
+    catalogVisible = shouldShow;
+  }
+
+  let currentTooltip = null; // To hold the currently visible tooltip element
+
+  /**
+   * Creates and displays a tooltip, positioning it relative to a target element.
+   * The tooltip is appended to the document body to avoid stacking context issues.
+   * @param {HTMLElement} targetElement - The element to which the tooltip is anchored.
+   * @param {string} text - The text content of the tooltip.
+   */
+  function showTooltip(targetElement, text) {
+    // Remove any existing tooltip
+    if (currentTooltip) {
+      currentTooltip.remove();
+    }
+
+    // Create the tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'custom-tooltip-text';
+    tooltip.textContent = text;
+    
+    // Append to body to ensure it's in the root stacking context
+    document.body.appendChild(tooltip);
+    currentTooltip = tooltip;
+
+    // Calculate position
+    const targetRect = targetElement.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    // Position tooltip centered below the button
+    let top = targetRect.bottom + 8; // 8px gap below
+    let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+
+    // Adjust if tooltip goes off-screen
+    if (top + tooltipRect.height > window.innerHeight) {
+      top = targetRect.top - tooltipRect.height - 8; // Position above if not enough space below
+    }
+    if (left < 0) {
+      left = 5; // 5px from edge
+    }
+    if (left + tooltipRect.width > window.innerWidth) {
+      left = window.innerWidth - tooltipRect.width - 5;
+    }
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.style.position = 'fixed'; // Ensure positioning is relative to viewport
+
+    // Fade in
+    setTimeout(() => {
+      if(tooltip) tooltip.style.opacity = '1';
+    }, 10); 
+  }
+
+  /**
+   * Hides and removes the currently visible tooltip.
+   */
+  function hideTooltip() {
+    if (currentTooltip) {
+      const tooltipToRemove = currentTooltip;
+      currentTooltip = null;
+      // Fade out
+      tooltipToRemove.style.opacity = '0';
+      // Remove from DOM after transition
+      setTimeout(() => {
+        tooltipToRemove.remove();
+      }, 150); // Must match transition duration in styles.css
     }
   }
 
   /**
    * Factory function to create a standardized toolbar button.
-   * Encapsulates the repetitive logic of creating a button, its icon, and its tooltip.
+   * Encapsulates the repetitive logic of creating a button and its icon.
+   * Tooltip handling is now managed via mouse events to avoid z-index issues.
    * @param {string} id - The ID for the button element.
    * @param {string} iconName - The name of the Material Symbol icon.
    * @param {string} tooltipText - The text to display in the tooltip.
    * @param {function} onClick - The function to call when the button is clicked.
    * @returns {HTMLButtonElement} The fully constructed button element.
    */
-  function createToolbarButton(id, iconName, tooltipText, onClick) {
+  function createToolbarButton(id, iconName, tooltipText, onClick, variant = 'icon-borderless') {
     const button = document.createElement('button');
     button.id = id;
-    button.className = 'custom-toolbar-button'; // Shared class for base styling
+
+    // Add attributes and classes to mimic native buttons
+    button.setAttribute('ms-button', '');
+    button.setAttribute('variant', variant);
+    button.setAttribute('iconname', iconName);
+    button.classList.add('mat-mdc-tooltip-trigger'); // Common class for tooltips
+
+    // Apply classes based on the variant
+    if (variant === 'icon-primary') {
+      button.classList.add('ms-button-primary', 'ms-button-icon');
+    } else { // Default to icon-borderless
+      button.classList.add('ms-button-borderless', 'ms-button-icon');
+    }
 
     const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined';
+    icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol';
     icon.textContent = iconName;
     button.appendChild(icon);
 
-    const tooltip = document.createElement('div');
-    tooltip.className = 'custom-tooltip-text';
-    tooltip.textContent = tooltipText;
-    button.appendChild(tooltip);
+    // --- Tooltip Handling ---
+    button.addEventListener('mouseenter', () => showTooltip(button, tooltipText));
+    button.addEventListener('mouseleave', hideTooltip);
+    button.addEventListener('blur', hideTooltip); // Hide on focus out
+    button.addEventListener('click', hideTooltip); // Hide tooltip on click as well
 
     button.addEventListener('click', onClick);
 
@@ -659,89 +715,87 @@
     const currentUrl = window.location.href;
 
     if (!targetUrlPattern.test(currentUrl)) {
-      const existingButton = document.getElementById(SELECTORS.id.exportButton);
-      if (existingButton) existingButton.remove();
-      const existingCatalogButton = document.getElementById(SELECTORS.id.catalogButton);
-      if (existingCatalogButton) existingCatalogButton.remove();
-      const existingCatalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
-      if (existingCatalogPanel) existingCatalogPanel.remove();
+      document.getElementById(SELECTORS.id.exportButton)?.remove();
+      document.getElementById(SELECTORS.id.catalogButton)?.remove();
+      document.getElementById(SELECTORS.id.catalogPanel)?.remove();
       return;
     }
 
     const injectionInterval = setInterval(() => {
-      // Find injection points for core and auxiliary features.
-      const toolbar = document.querySelector(SELECTORS.query.toolbar);
-      const sideToggles = document.querySelector(SELECTORS.query.sideTogglesContainer);
+      const toolbarRight = document.querySelector('.toolbar-right');
+      if (!toolbarRight) return;
 
-      // Stop the interval once we've had a chance to inject, to avoid re-running.
-      // The presence of either container is a good signal to proceed and then stop.
-      if (toolbar || sideToggles) {
-        clearInterval(injectionInterval);
+      clearInterval(injectionInterval);
 
-        // --- Graceful Injection for Core Feature: Export Button ---
-        if (toolbar) {
-          if (!document.getElementById(SELECTORS.id.exportButton)) {
-            const exportButton = createToolbarButton(
-              SELECTORS.id.exportButton,
-              'markdown_copy',
-              chrome.i18n.getMessage('tooltipCopyMarkdown'),
-              exportToMarkdown
-            );
+      // --- Inject Buttons ---
+      if (!document.getElementById(SELECTORS.id.exportButton)) {
+        const exportButton = createToolbarButton(
+          SELECTORS.id.exportButton, 'markdown_copy', chrome.i18n.getMessage('tooltipCopyMarkdown'), exportToMarkdown, 'icon-borderless'
+        );
+        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        if (moreButton) moreButton.parentElement.insertBefore(exportButton, moreButton);
+        else toolbarRight.appendChild(exportButton);
+      }
 
-            const moreButton = toolbar.querySelector(SELECTORS.query.moreActionsButton);
-            // The "more actions" button is nested inside another div, so we need to
-            // insert the new button relative to its parent, not the main toolbar.
-            if (moreButton && moreButton.parentElement) {
-              moreButton.parentElement.insertBefore(exportButton, moreButton);
-            } else {
-              toolbar.appendChild(exportButton); // Fallback
-            }
-          }
+      if (!document.getElementById(SELECTORS.id.catalogButton)) {
+        const catalogButton = createToolbarButton(
+          SELECTORS.id.catalogButton, 'list', chrome.i18n.getMessage('tooltipCatalog'), () => { /* Handled by delegation */ }, 'icon-primary'
+        );
+        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        if (moreButton) {
+            moreButton.after(catalogButton);
         } else {
-          console.warn('Markdown Copier: Could not find toolbar to inject Export button.');
+            // Fallback if moreButton is not found
+            const runSettingsButton = toolbarRight.querySelector(SELECTORS.query.runSettingsButton);
+            if (runSettingsButton) {
+                runSettingsButton.parentElement.insertBefore(catalogButton, runSettingsButton);
+            }
         }
+      }
 
-        // --- Graceful Injection for Auxiliary Feature: Catalog ---
-        if (sideToggles) {
-          // Inject Catalog Button
-          if (!document.getElementById(SELECTORS.id.catalogButton)) {
-            const catalogButton = createToolbarButton(
-              SELECTORS.id.catalogButton,
-              'list',
-              chrome.i18n.getMessage('tooltipCatalog'),
-              (e) => {
-                e.stopPropagation();
-                toggleCatalog();
+      // --- Event Delegation Listener ---
+      if (!toolbarRight.dataset.delegatedListener) {
+        toolbarRight.dataset.delegatedListener = 'true';
+        toolbarRight.addEventListener('click', (e) => {
+          const target = e.target;
+
+          // Case 1: User clicked the NATIVE Run Settings button
+          if (target.closest(SELECTORS.query.runSettingsButton)) {
+            if (catalogVisible) {
+              const catalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
+              if (catalogPanel) {
+                // Instantly hide the panel by disabling its transition.
+                catalogPanel.classList.add('no-transition');
+                toggleCatalog(false);
+                // Use a short timeout to re-enable the transition for the next time.
+                setTimeout(() => {
+                  catalogPanel.classList.remove('no-transition');
+                }, 50);
               }
-            );
-            sideToggles.appendChild(catalogButton);
+            }
+            // Let the native click proceed to open the settings panel.
           }
-
-          // Inject Catalog Panel (hidden)
-          if (!document.getElementById(SELECTORS.id.catalogPanel)) {
-            const panel = createCatalogPanel();
-            // The original injection logic placed the panel in the correct visual position,
-            // but the selector was unreliable. We now use a more stable element (sideToggles)
-            // to find the correct native panel container to insert our panel next to.
-            const nativePanelContainer = sideToggles.closest(SELECTORS.query.nativeSidePanel);
-            if (nativePanelContainer && nativePanelContainer.parentElement) {
-              // By inserting the panel as a sibling to the native one, we ensure
-              // that the existing CSS for positioning works as intended.
-              nativePanelContainer.parentElement.insertBefore(panel, nativePanelContainer);
+          // Case 2: User clicked OUR Catalog button
+          else if (target.closest('#' + SELECTORS.id.catalogButton)) {
+            const runSettingsButton = document.querySelector(SELECTORS.query.runSettingsButton);
+            if (!runSettingsButton) {
+              // Native panel is open, close it first.
+              document.querySelector(SELECTORS.query.nativeSidePanel)?.querySelector(SELECTORS.query.nativeSidePanelCloseButton)?.click();
+              // The native panel closing also has an animation, so we wait.
+              setTimeout(() => toggleCatalog(), 300);
             } else {
-              console.warn('Markdown Copier: Could not find a stable injection point for the Catalog panel.');
+              toggleCatalog();
             }
           }
+        });
+      }
 
-          // Add listeners to all native sidebar buttons to close our panel
-          const nativeSidebarButtons = sideToggles.querySelectorAll(SELECTORS.query.nativeSidePanelButtons);
-          nativeSidebarButtons.forEach(button => {
-            button.addEventListener('click', () => {
-              toggleCatalog(false); // Force-close our panel
-            });
-          });
-        } else {
-          console.warn('Markdown Copier: Could not find side toggles to inject Catalog feature.');
+      // --- Inject Catalog Panel ---
+      if (!document.getElementById(SELECTORS.id.catalogPanel)) {
+        const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+        if (chunkEditor) {
+          const panel = createCatalogPanel();
+          chunkEditor.appendChild(panel);
         }
       }
     }, CONSTANTS.INJECTION_INTERVAL_MS);
@@ -749,29 +803,20 @@
 
   function initialize() {
     checkAndInjectButton();
-
-    // Set up conversation observer to handle deletions
     setupConversationObserver();
 
-    // Monitor URL changes and UI presence for single-page applications
     let lastUrl = window.location.href;
     const observer = new MutationObserver(() => {
       const currentUrl = window.location.href;
-
-      // 1. Handle URL changes (existing logic)
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         checkAndInjectButton();
-        return; // Injection logic started, no need for further checks in this mutation.
+        return;
       }
-
-      // 2. Guardian check: If URL is the same, but UI is gone, re-inject.
       const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
       const isOnTargetPage = targetUrlPattern.test(currentUrl);
       const uiElementExists = document.getElementById(SELECTORS.id.exportButton);
-
       if (isOnTargetPage && !uiElementExists) {
-        // The UI was likely removed by a soft refresh, trigger injection again.
         checkAndInjectButton();
       }
     });
