@@ -596,9 +596,78 @@
     catalogVisible = shouldShow;
   }
 
+  let currentTooltip = null; // To hold the currently visible tooltip element
+
+  /**
+   * Creates and displays a tooltip, positioning it relative to a target element.
+   * The tooltip is appended to the document body to avoid stacking context issues.
+   * @param {HTMLElement} targetElement - The element to which the tooltip is anchored.
+   * @param {string} text - The text content of the tooltip.
+   */
+  function showTooltip(targetElement, text) {
+    // Remove any existing tooltip
+    if (currentTooltip) {
+      currentTooltip.remove();
+    }
+
+    // Create the tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'custom-tooltip-text';
+    tooltip.textContent = text;
+    
+    // Append to body to ensure it's in the root stacking context
+    document.body.appendChild(tooltip);
+    currentTooltip = tooltip;
+
+    // Calculate position
+    const targetRect = targetElement.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    // Position tooltip centered below the button
+    let top = targetRect.bottom + 8; // 8px gap below
+    let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+
+    // Adjust if tooltip goes off-screen
+    if (top + tooltipRect.height > window.innerHeight) {
+      top = targetRect.top - tooltipRect.height - 8; // Position above if not enough space below
+    }
+    if (left < 0) {
+      left = 5; // 5px from edge
+    }
+    if (left + tooltipRect.width > window.innerWidth) {
+      left = window.innerWidth - tooltipRect.width - 5;
+    }
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.style.position = 'fixed'; // Ensure positioning is relative to viewport
+
+    // Fade in
+    setTimeout(() => {
+      if(tooltip) tooltip.style.opacity = '1';
+    }, 10); 
+  }
+
+  /**
+   * Hides and removes the currently visible tooltip.
+   */
+  function hideTooltip() {
+    if (currentTooltip) {
+      const tooltipToRemove = currentTooltip;
+      currentTooltip = null;
+      // Fade out
+      tooltipToRemove.style.opacity = '0';
+      // Remove from DOM after transition
+      setTimeout(() => {
+        tooltipToRemove.remove();
+      }, 150); // Must match transition duration in styles.css
+    }
+  }
+
   /**
    * Factory function to create a standardized toolbar button.
-   * Encapsulates the repetitive logic of creating a button, its icon, and its tooltip.
+   * Encapsulates the repetitive logic of creating a button and its icon.
+   * Tooltip handling is now managed via mouse events to avoid z-index issues.
    * @param {string} id - The ID for the button element.
    * @param {string} iconName - The name of the Material Symbol icon.
    * @param {string} tooltipText - The text to display in the tooltip.
@@ -627,10 +696,11 @@
     icon.textContent = iconName;
     button.appendChild(icon);
 
-    const tooltip = document.createElement('div');
-    tooltip.className = 'custom-tooltip-text';
-    tooltip.textContent = tooltipText;
-    button.appendChild(tooltip);
+    // --- Tooltip Handling ---
+    button.addEventListener('mouseenter', () => showTooltip(button, tooltipText));
+    button.addEventListener('mouseleave', hideTooltip);
+    button.addEventListener('blur', hideTooltip); // Hide on focus out
+    button.addEventListener('click', hideTooltip); // Hide tooltip on click as well
 
     button.addEventListener('click', onClick);
 

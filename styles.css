@@ -3,10 +3,7 @@
  *    We only need to ensure they are relatively positioned for the tooltip.
  *    All other styling (size, color, hover) is now inherited from the native classes.
  */
-#export-markdown-btn,
-#catalog-toggle-btn {
-    position: relative;
-}
+/* Buttons no longer need relative positioning for tooltips */
 
 /* Hide button when its panel is open */
 .button-hidden {
@@ -16,6 +13,7 @@
 /*
  * 2. Custom Tooltip Style
  *    This is still needed as it's a custom element.
+ *    It's positioned via JavaScript by appending to the body to avoid stacking context issues.
  */
 .custom-tooltip-text {
     background-color: rgb(255, 255, 255);
@@ -30,21 +28,19 @@
     line-height: 16px;
     text-align: center;
     white-space: nowrap;
-    position: absolute;
-    z-index: 99999;
-    top: 120%; /* Position below the button */
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed; /* Use fixed positioning relative to the viewport */
+    z-index: 99999; /* High z-index to appear on top */
     pointer-events: none;
     opacity: 0;
     transition: opacity 150ms ease-in-out;
+    /* top, left, and transform are now set by JavaScript */
 }
 
-/* Show the tooltip on hover */
-#export-markdown-btn:hover .custom-tooltip-text,
-#catalog-toggle-btn:hover .custom-tooltip-text {
-    opacity: 1;
-}
+/* 
+ * The hover effect is now handled by JavaScript (mouseenter/mouseleave)
+ * which adds/removes the element and sets its opacity.
+ * The old hover rule is no longer needed.
+ */
 
 /*
  * 3. Catalog Side Panel
