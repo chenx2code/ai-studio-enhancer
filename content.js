@@ -19,6 +19,8 @@
       chatTurn: 'ms-chat-turn',
       chatTurnContainer: '.chat-turn-container',
       conversationObserverTarget: 'body',
+      temporaryChatToggle: 'ms-incognito-mode-toggle',
+      temporaryChatIndicator: 'ms-incognito-mode-indicator',
     },
 
     // --- Host Page Classes ---
@@ -725,6 +727,19 @@
       const toolbarRight = document.querySelector('.toolbar-right');
       if (!toolbarRight) return;
 
+      // Check for temporary chat mode (either by active toggle or by persistent indicator)
+      const temporaryChatToggle = document.querySelector(SELECTORS.query.temporaryChatToggle);
+      const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
+      const isIndicatorPresent = document.querySelector(SELECTORS.query.temporaryChatIndicator);
+
+      if (isToggleActive || isIndicatorPresent) {
+        // If in temp chat mode, ensure our buttons are removed and do not proceed.
+        document.getElementById(SELECTORS.id.exportButton)?.remove();
+        document.getElementById(SELECTORS.id.catalogButton)?.remove();
+        document.getElementById(SELECTORS.id.catalogPanel)?.remove(); // Also hide panel
+        return;
+      }
+
       clearInterval(injectionInterval);
 
       // --- Inject Buttons ---
@@ -802,25 +817,35 @@
   }
 
   function initialize() {
+    // Initial check
     checkAndInjectButton();
     setupConversationObserver();
 
     let lastUrl = window.location.href;
+    let debounceTimer;
+
     const observer = new MutationObserver(() => {
       const currentUrl = window.location.href;
+      
+      // Always re-run checks if URL changes
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         checkAndInjectButton();
         return;
       }
-      const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
-      const isOnTargetPage = targetUrlPattern.test(currentUrl);
-      const uiElementExists = document.getElementById(SELECTORS.id.exportButton);
-      if (isOnTargetPage && !uiElementExists) {
+
+      // For all other DOM changes, use a debounce to prevent excessive checks
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
         checkAndInjectButton();
-      }
+      }, 150); // Debounce to handle rapid DOM updates
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true // IMPORTANT: This is the key fix to detect class/attribute changes
+    });
   }
 
   if (document.readyState === 'loading') {
