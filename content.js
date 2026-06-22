@@ -73,12 +73,10 @@
   let catalogVisible = false;
 
   /**
-   * PART 1: 脚本注射器
+   * PART 1: 脚本注射器 (兼容 Chrome 和 Firefox)
+   * 拦截逻辑 (interceptor.js) 现已直接在 manifest.json 中注册为 "world": "MAIN" 的 content_scripts。
+   * 浏览器会自动、安全且不受 CSP 限制地将其注入至页面环境中，因此不再需要此处的动态 DOM 注入代码。
    */
-  const s = document.createElement('script');
-  s.src = chrome.runtime.getURL('interceptor.js');
-  s.onload = function () { this.remove(); };
-  (document.head || document.documentElement).appendChild(s);
 
   /**
    * PART 2: 消息监听器
