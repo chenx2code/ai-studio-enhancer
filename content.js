@@ -11,7 +11,7 @@
     // Selectors for finding elements on the Google AI Studio page.
     query: {
       toolbar: 'ms-toolbar .toolbar-container',
-      runSettingsButton: 'button[iconname="tune"]',
+      runSettingsButton: '[iconname="tune"], [aria-label*="run settings"], [aria-label*="Run settings"], [aria-label*="settings panel"]',
       moreActionsButton: 'button[aria-label="View more actions"]',
       nativeSidePanel: 'ms-right-side-panel',
       nativeSidePanelCloseButton: 'ms-right-side-panel button[iconname="close"]',
@@ -48,6 +48,7 @@
       catalogButton: 'catalog-toggle-btn',
       catalogPanel: 'catalog-side-panel',
       catalogListContainer: 'catalog-list-container',
+      scrollToBottomButton: 'scroll-to-bottom-btn',
     },
 
     // --- Extension-Specific Classes ---
@@ -71,6 +72,8 @@
   let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
   let catalogData = [];
   let catalogVisible = false;
+  let scrollStopTimer = null;
+  let isHoveringScrollButton = false;
 
   /**
    * PART 1: 脚本注射器
@@ -435,6 +438,79 @@
   }
 
   /**
+   * Navigate to the bottom of the conversation
+   */
+  function scrollToBottom() {
+    try {
+      // The chunkEditor is usually fixed at the bottom, so scrolling it into view doesn't scroll the conversation.
+      // Instead, we find the last chat turn and scroll to it.
+      const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
+      if (chatTurns.length > 0) {
+        const lastTurn = chatTurns[chatTurns.length - 1];
+        lastTurn.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+      }
+    } catch (error) {
+      console.error('Error scrolling to bottom:', error);
+    }
+  }
+
+  /**
+   * Get the main chat content container that resizes when sidebars toggle
+   */
+  function getChatMainContainer() {
+    const firstTurn = document.querySelector(SELECTORS.query.chatTurn);
+    if (firstTurn && firstTurn.parentElement) {
+      return firstTurn.parentElement;
+    }
+    const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+    if (chunkEditor) {
+      const mainContent = Array.from(chunkEditor.children).find(
+        child => child.id !== SELECTORS.id.catalogPanel && child.tagName !== 'STYLE' && !child.classList.contains('custom-tooltip-text')
+      );
+      if (mainContent) return mainContent;
+      return chunkEditor;
+    }
+    return null;
+  }
+
+  /**
+   * Update the position of the scroll to bottom button to keep it centered
+   */
+  function updateScrollButtonPosition() {
+    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+    if (!btn) return;
+    const target = getChatMainContainer();
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      btn.style.left = (rect.left + rect.width / 2) + 'px';
+    }
+  }
+
+  // Detect when AI Studio sidebar overlay backdrop is present (narrow screen mode)
+  function isOverlayActive() {
+    // AI Studio uses .sidebar-overlay for its backdrop (z-index: 4) in narrow screen mode.
+    // In wide screen mode, the sidebar-overlay may be present in DOM but has display: none.
+    // We check if it is active by checking display and visibility, but ignore opacity
+    // so it doesn't flicker during the fade-in transition (where opacity starts at 0).
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (overlay) {
+      const style = window.getComputedStyle(overlay);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    }
+    return false;
+  }
+
+  function updateScrollBtnOverlayVisibility() {
+    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+    if (!btn) return;
+    if (isOverlayActive()) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
+  }
+
+  /**
    * PART 3.7: 目录切换功能
    */
 
@@ -719,6 +795,7 @@
     if (!targetUrlPattern.test(currentUrl)) {
       document.getElementById(SELECTORS.id.exportButton)?.remove();
       document.getElementById(SELECTORS.id.catalogButton)?.remove();
+      document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
       document.getElementById(SELECTORS.id.catalogPanel)?.remove();
       return;
     }
@@ -736,6 +813,7 @@
         // If in temp chat mode, ensure our buttons are removed and do not proceed.
         document.getElementById(SELECTORS.id.exportButton)?.remove();
         document.getElementById(SELECTORS.id.catalogButton)?.remove();
+        document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
         document.getElementById(SELECTORS.id.catalogPanel)?.remove(); // Also hide panel
         return;
       }
@@ -813,6 +891,73 @@
           chunkEditor.appendChild(panel);
         }
       }
+
+      // --- Inject Floating Scroll Button ---
+      if (!document.getElementById(SELECTORS.id.scrollToBottomButton)) {
+        const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+        if (chunkEditor) {
+          const scrollBtn = document.createElement('button');
+          scrollBtn.id = SELECTORS.id.scrollToBottomButton;
+          scrollBtn.className = 'button-hidden mat-mdc-tooltip-trigger'; // Start hidden
+          const icon = document.createElement('span');
+          icon.className = 'material-symbols-outlined notranslate';
+          icon.textContent = 'keyboard_arrow_down';
+          scrollBtn.appendChild(icon);
+          scrollBtn.addEventListener('click', () => {
+            hideTooltip();
+            scrollToBottom();
+            scrollBtn.classList.add('button-hidden');
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+            }
+            isHoveringScrollButton = false;
+          });
+          scrollBtn.addEventListener('mouseenter', () => {
+            isHoveringScrollButton = true;
+            showTooltip(scrollBtn, chrome.i18n.getMessage('tooltipScrollToBottom'));
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+              scrollStopTimer = null;
+            }
+          });
+          scrollBtn.addEventListener('mouseleave', () => {
+            isHoveringScrollButton = false;
+            hideTooltip();
+            
+            // Set the auto-hide timer when mouse leaves, unless we are already at the bottom
+            const target = getChatMainContainer();
+            if (target) {
+              const currentScrollTop = target.scrollTop;
+              const currentScrollHeight = target.scrollHeight;
+              const distanceToBottom = currentScrollHeight - currentScrollTop - target.clientHeight;
+              if (distanceToBottom >= 150) {
+                if (scrollStopTimer) {
+                  clearTimeout(scrollStopTimer);
+                }
+                scrollStopTimer = setTimeout(() => {
+                  scrollBtn.classList.add('button-hidden');
+                }, 2500);
+              }
+            }
+          });
+          scrollBtn.addEventListener('blur', () => {
+            hideTooltip();
+          });
+          
+          document.body.appendChild(scrollBtn);
+          
+          // Keep the button centered relative to the chat area using ResizeObserver
+          const targetContainer = getChatMainContainer();
+          if (targetContainer) {
+            const resizeObserver = new ResizeObserver(() => {
+              updateScrollButtonPosition();
+              updateScrollBtnOverlayVisibility();
+            });
+            resizeObserver.observe(targetContainer);
+          }
+          updateScrollButtonPosition(); // Initial positioning
+        }
+      }
     }, CONSTANTS.INJECTION_INTERVAL_MS);
   }
 
@@ -821,10 +966,86 @@
     checkAndInjectButton();
     setupConversationObserver();
 
+    const lastScrollTops = new WeakMap();
+    const lastScrollHeights = new WeakMap();
+    let ignoreScrollUntil = 0;
+    
+    // Global scroll listener for the floating button
+    window.addEventListener('scroll', (e) => {
+      const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+      if (!btn) return;
+      
+      let container = e.target;
+      
+      const isDoc = container === document || container === window || container === document.documentElement || container === document.body;
+      
+      // If it's not the main document/window, it must be a container holding chat turns (the chat list)
+      if (!isDoc) {
+        const containsChatTurns = typeof container.querySelector === 'function' && container.querySelector(SELECTORS.query.chatTurn) !== null;
+        if (!containsChatTurns) {
+          return; // Ignore scroll events from code blocks, dropdowns, side panels, etc.
+        }
+      }
+      
+      if (container === document || container.nodeType === Node.DOCUMENT_NODE) {
+        container = document.documentElement;
+      }
+      
+      // Only check significant scrolling containers
+      if (container.scrollHeight > container.clientHeight + 20) {
+        const currentScrollTop = container.scrollTop;
+        const currentScrollHeight = container.scrollHeight;
+        const distanceToBottom = currentScrollHeight - currentScrollTop - container.clientHeight;
+        
+        let lastScrollTop = lastScrollTops.get(container) || 0;
+        const lastScrollHeight = lastScrollHeights.get(container) || currentScrollHeight;
+        
+        // If scrollHeight changed (e.g. loading older messages at the top), 
+        // adjust lastScrollTop by the height difference to prevent false triggers.
+        if (currentScrollHeight !== lastScrollHeight) {
+          const deltaHeight = currentScrollHeight - lastScrollHeight;
+          lastScrollTop += deltaHeight;
+        }
+        
+        lastScrollTops.set(container, currentScrollTop);
+        lastScrollHeights.set(container, currentScrollHeight);
+        
+        // Ignore scroll events for showing the button if we recently had DOM mutations (like loading history)
+        if (Date.now() < ignoreScrollUntil) {
+          return;
+        }
+        
+        // Hide if at the absolute bottom
+        if (distanceToBottom < 150) {
+          if (scrollStopTimer) {
+            clearTimeout(scrollStopTimer);
+          }
+          btn.classList.add('button-hidden');
+        } else {
+          // Scrolling (any direction) and not at bottom -> show button
+          updateScrollBtnOverlayVisibility();
+          if (btn.style.display !== 'none') {
+            btn.classList.remove('button-hidden');
+            
+            // Auto-hide the button after 2.5 seconds of inactivity (no scrolling),
+            // but ONLY if the mouse is not currently hovering over it.
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+            }
+            if (!isHoveringScrollButton) {
+              scrollStopTimer = setTimeout(() => {
+                btn.classList.add('button-hidden');
+              }, 2500);
+            }
+          }
+        }
+      }
+    }, true);
+
     let lastUrl = window.location.href;
     let debounceTimer;
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       const currentUrl = window.location.href;
       
       // Always re-run checks if URL changes
@@ -833,6 +1054,21 @@
         checkAndInjectButton();
         return;
       }
+
+      // Check if new elements (like history messages) were added
+      let hasAddedNodes = false;
+      for (const mutation of mutations) {
+        if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+          hasAddedNodes = true;
+          break;
+        }
+      }
+      if (hasAddedNodes) {
+        ignoreScrollUntil = Date.now() + 300; // Ignore scroll events for 300ms
+      }
+
+      // Check if overlay/backdrop state changed
+      updateScrollBtnOverlayVisibility();
 
       // For all other DOM changes, use a debounce to prevent excessive checks
       clearTimeout(debounceTimer);
@@ -846,6 +1082,20 @@
       subtree: true,
       attributes: true // IMPORTANT: This is the key fix to detect class/attribute changes
     });
+
+    // Listen for mousedown on the Tune settings button to hide the scroll button instantly.
+    // mousedown fires significantly faster than click (which waits for mouseup).
+    // In wide screens (no overlay), the subsequent DOM mutation observer will instantly restore it.
+    // In narrow screens (with overlay), it stays hidden immediately.
+    document.addEventListener('mousedown', (e) => {
+      const settingsBtn = e.target.closest(SELECTORS.query.runSettingsButton);
+      if (settingsBtn) {
+        const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+        if (btn) {
+          btn.style.display = 'none';
+        }
+      }
+    }, true);
   }
 
   if (document.readyState === 'loading') {

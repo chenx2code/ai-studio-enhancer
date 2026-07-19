@@ -34,5 +34,9 @@
   "catalogEmptyState": {
     "message": "No conversation prompts found",
     "description": "Message displayed when the catalog is empty or no user prompts are available."
+  },
+  "tooltipScrollToBottom": {
+    "message": "Scroll to bottom",
+    "description": "The tooltip text for the scroll to bottom button."
   }
 }
