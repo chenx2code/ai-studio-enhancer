@@ -48,6 +48,7 @@
       catalogButton: 'catalog-toggle-btn',
       catalogPanel: 'catalog-side-panel',
       catalogListContainer: 'catalog-list-container',
+      scrollToBottomButton: 'scroll-to-bottom-btn',
     },
 
     // --- Extension-Specific Classes ---
@@ -435,6 +436,23 @@
   }
 
   /**
+   * Navigate to the bottom of the conversation
+   */
+  function scrollToBottom() {
+    try {
+      // The chunkEditor is usually fixed at the bottom, so scrolling it into view doesn't scroll the conversation.
+      // Instead, we find the last chat turn and scroll to it.
+      const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
+      if (chatTurns.length > 0) {
+        const lastTurn = chatTurns[chatTurns.length - 1];
+        lastTurn.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+      }
+    } catch (error) {
+      console.error('Error scrolling to bottom:', error);
+    }
+  }
+
+  /**
    * PART 3.7: 目录切换功能
    */
 
@@ -719,6 +737,7 @@
     if (!targetUrlPattern.test(currentUrl)) {
       document.getElementById(SELECTORS.id.exportButton)?.remove();
       document.getElementById(SELECTORS.id.catalogButton)?.remove();
+      document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
       document.getElementById(SELECTORS.id.catalogPanel)?.remove();
       return;
     }
@@ -736,6 +755,7 @@
         // If in temp chat mode, ensure our buttons are removed and do not proceed.
         document.getElementById(SELECTORS.id.exportButton)?.remove();
         document.getElementById(SELECTORS.id.catalogButton)?.remove();
+        document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
         document.getElementById(SELECTORS.id.catalogPanel)?.remove(); // Also hide panel
         return;
       }
@@ -743,6 +763,15 @@
       clearInterval(injectionInterval);
 
       // --- Inject Buttons ---
+      if (!document.getElementById(SELECTORS.id.scrollToBottomButton)) {
+        const scrollBtn = createToolbarButton(
+          SELECTORS.id.scrollToBottomButton, 'keyboard_arrow_down', chrome.i18n.getMessage('tooltipScrollToBottom'), scrollToBottom, 'icon-borderless'
+        );
+        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        if (moreButton) moreButton.parentElement.insertBefore(scrollBtn, moreButton);
+        else toolbarRight.appendChild(scrollBtn);
+      }
+
       if (!document.getElementById(SELECTORS.id.exportButton)) {
         const exportButton = createToolbarButton(
           SELECTORS.id.exportButton, 'markdown_copy', chrome.i18n.getMessage('tooltipCopyMarkdown'), exportToMarkdown, 'icon-borderless'
