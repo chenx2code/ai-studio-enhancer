@@ -152,6 +152,7 @@
 #scroll-to-bottom-btn {
     position: fixed;
     bottom: 120px;
+    left: 50%;
     transform: translateX(-50%);
     width: 24px;
     height: 24px;
@@ -163,7 +164,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    z-index: 1000;
+    z-index: 999;
     color: #444746;
     transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.15s;
 }
@@ -179,7 +180,6 @@
     transform: translateX(-50%) translateY(10px);
     transition: opacity 50ms ease-out, transform 50ms ease-out; /* Hide instantly/very fast */
 }
-
 #scroll-to-bottom-btn .material-symbols-outlined {
     font-size: 12px;
 }

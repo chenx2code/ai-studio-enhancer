@@ -11,7 +11,7 @@
     // Selectors for finding elements on the Google AI Studio page.
     query: {
       toolbar: 'ms-toolbar .toolbar-container',
-      runSettingsButton: 'button[iconname="tune"]',
+      runSettingsButton: '[iconname="tune"], [aria-label*="run settings"], [aria-label*="Run settings"], [aria-label*="settings panel"]',
       moreActionsButton: 'button[aria-label="View more actions"]',
       nativeSidePanel: 'ms-right-side-panel',
       nativeSidePanelCloseButton: 'ms-right-side-panel button[iconname="close"]',
@@ -486,6 +486,30 @@
     }
   }
 
+  // Detect when AI Studio sidebar overlay backdrop is present (narrow screen mode)
+  function isOverlayActive() {
+    // AI Studio uses .sidebar-overlay for its backdrop (z-index: 4) in narrow screen mode.
+    // In wide screen mode, the sidebar-overlay may be present in DOM but has display: none.
+    // We check if it is active by checking display and visibility, but ignore opacity
+    // so it doesn't flicker during the fade-in transition (where opacity starts at 0).
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (overlay) {
+      const style = window.getComputedStyle(overlay);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    }
+    return false;
+  }
+
+  function updateScrollBtnOverlayVisibility() {
+    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+    if (!btn) return;
+    if (isOverlayActive()) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+    }
+  }
+
   /**
    * PART 3.7: 目录切换功能
    */
@@ -875,12 +899,10 @@
           const scrollBtn = document.createElement('button');
           scrollBtn.id = SELECTORS.id.scrollToBottomButton;
           scrollBtn.className = 'button-hidden mat-mdc-tooltip-trigger'; // Start hidden
-          
           const icon = document.createElement('span');
           icon.className = 'material-symbols-outlined notranslate';
           icon.textContent = 'keyboard_arrow_down';
           scrollBtn.appendChild(icon);
-          
           scrollBtn.addEventListener('click', () => {
             hideTooltip();
             scrollToBottom();
@@ -927,7 +949,10 @@
           // Keep the button centered relative to the chat area using ResizeObserver
           const targetContainer = getChatMainContainer();
           if (targetContainer) {
-            const resizeObserver = new ResizeObserver(() => updateScrollButtonPosition());
+            const resizeObserver = new ResizeObserver(() => {
+              updateScrollButtonPosition();
+              updateScrollBtnOverlayVisibility();
+            });
             resizeObserver.observe(targetContainer);
           }
           updateScrollButtonPosition(); // Initial positioning
@@ -998,17 +1023,20 @@
           btn.classList.add('button-hidden');
         } else {
           // Scrolling (any direction) and not at bottom -> show button
-          btn.classList.remove('button-hidden');
-          
-          // Auto-hide the button after 2.5 seconds of inactivity (no scrolling),
-          // but ONLY if the mouse is not currently hovering over it.
-          if (scrollStopTimer) {
-            clearTimeout(scrollStopTimer);
-          }
-          if (!isHoveringScrollButton) {
-            scrollStopTimer = setTimeout(() => {
-              btn.classList.add('button-hidden');
-            }, 2500);
+          updateScrollBtnOverlayVisibility();
+          if (btn.style.display !== 'none') {
+            btn.classList.remove('button-hidden');
+            
+            // Auto-hide the button after 2.5 seconds of inactivity (no scrolling),
+            // but ONLY if the mouse is not currently hovering over it.
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+            }
+            if (!isHoveringScrollButton) {
+              scrollStopTimer = setTimeout(() => {
+                btn.classList.add('button-hidden');
+              }, 2500);
+            }
           }
         }
       }
@@ -1039,6 +1067,9 @@
         ignoreScrollUntil = Date.now() + 300; // Ignore scroll events for 300ms
       }
 
+      // Check if overlay/backdrop state changed
+      updateScrollBtnOverlayVisibility();
+
       // For all other DOM changes, use a debounce to prevent excessive checks
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -1051,6 +1082,20 @@
       subtree: true,
       attributes: true // IMPORTANT: This is the key fix to detect class/attribute changes
     });
+
+    // Listen for mousedown on the Tune settings button to hide the scroll button instantly.
+    // mousedown fires significantly faster than click (which waits for mouseup).
+    // In wide screens (no overlay), the subsequent DOM mutation observer will instantly restore it.
+    // In narrow screens (with overlay), it stays hidden immediately.
+    document.addEventListener('mousedown', (e) => {
+      const settingsBtn = e.target.closest(SELECTORS.query.runSettingsButton);
+      if (settingsBtn) {
+        const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+        if (btn) {
+          btn.style.display = 'none';
+        }
+      }
+    }, true);
   }
 
   if (document.readyState === 'loading') {
