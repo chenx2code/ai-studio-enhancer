@@ -72,6 +72,8 @@
   let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
   let catalogData = [];
   let catalogVisible = false;
+  let scrollStopTimer = null;
+  let isHoveringScrollButton = false;
 
   /**
    * PART 1: 脚本注射器
@@ -453,6 +455,38 @@
   }
 
   /**
+   * Get the main chat content container that resizes when sidebars toggle
+   */
+  function getChatMainContainer() {
+    const firstTurn = document.querySelector(SELECTORS.query.chatTurn);
+    if (firstTurn && firstTurn.parentElement) {
+      return firstTurn.parentElement;
+    }
+    const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+    if (chunkEditor) {
+      const mainContent = Array.from(chunkEditor.children).find(
+        child => child.id !== SELECTORS.id.catalogPanel && child.tagName !== 'STYLE' && !child.classList.contains('custom-tooltip-text')
+      );
+      if (mainContent) return mainContent;
+      return chunkEditor;
+    }
+    return null;
+  }
+
+  /**
+   * Update the position of the scroll to bottom button to keep it centered
+   */
+  function updateScrollButtonPosition() {
+    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+    if (!btn) return;
+    const target = getChatMainContainer();
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      btn.style.left = (rect.left + rect.width / 2) + 'px';
+    }
+  }
+
+  /**
    * PART 3.7: 目录切换功能
    */
 
@@ -763,15 +797,6 @@
       clearInterval(injectionInterval);
 
       // --- Inject Buttons ---
-      if (!document.getElementById(SELECTORS.id.scrollToBottomButton)) {
-        const scrollBtn = createToolbarButton(
-          SELECTORS.id.scrollToBottomButton, 'keyboard_arrow_down', chrome.i18n.getMessage('tooltipScrollToBottom'), scrollToBottom, 'icon-borderless'
-        );
-        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
-        if (moreButton) moreButton.parentElement.insertBefore(scrollBtn, moreButton);
-        else toolbarRight.appendChild(scrollBtn);
-      }
-
       if (!document.getElementById(SELECTORS.id.exportButton)) {
         const exportButton = createToolbarButton(
           SELECTORS.id.exportButton, 'markdown_copy', chrome.i18n.getMessage('tooltipCopyMarkdown'), exportToMarkdown, 'icon-borderless'
@@ -842,6 +867,72 @@
           chunkEditor.appendChild(panel);
         }
       }
+
+      // --- Inject Floating Scroll Button ---
+      if (!document.getElementById(SELECTORS.id.scrollToBottomButton)) {
+        const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+        if (chunkEditor) {
+          const scrollBtn = document.createElement('button');
+          scrollBtn.id = SELECTORS.id.scrollToBottomButton;
+          scrollBtn.className = 'button-hidden mat-mdc-tooltip-trigger'; // Start hidden
+          
+          const icon = document.createElement('span');
+          icon.className = 'material-symbols-outlined notranslate';
+          icon.textContent = 'keyboard_arrow_down';
+          scrollBtn.appendChild(icon);
+          
+          scrollBtn.addEventListener('click', () => {
+            hideTooltip();
+            scrollToBottom();
+            scrollBtn.classList.add('button-hidden');
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+            }
+            isHoveringScrollButton = false;
+          });
+          scrollBtn.addEventListener('mouseenter', () => {
+            isHoveringScrollButton = true;
+            showTooltip(scrollBtn, chrome.i18n.getMessage('tooltipScrollToBottom'));
+            if (scrollStopTimer) {
+              clearTimeout(scrollStopTimer);
+              scrollStopTimer = null;
+            }
+          });
+          scrollBtn.addEventListener('mouseleave', () => {
+            isHoveringScrollButton = false;
+            hideTooltip();
+            
+            // Set the auto-hide timer when mouse leaves, unless we are already at the bottom
+            const target = getChatMainContainer();
+            if (target) {
+              const currentScrollTop = target.scrollTop;
+              const currentScrollHeight = target.scrollHeight;
+              const distanceToBottom = currentScrollHeight - currentScrollTop - target.clientHeight;
+              if (distanceToBottom >= 150) {
+                if (scrollStopTimer) {
+                  clearTimeout(scrollStopTimer);
+                }
+                scrollStopTimer = setTimeout(() => {
+                  scrollBtn.classList.add('button-hidden');
+                }, 2500);
+              }
+            }
+          });
+          scrollBtn.addEventListener('blur', () => {
+            hideTooltip();
+          });
+          
+          document.body.appendChild(scrollBtn);
+          
+          // Keep the button centered relative to the chat area using ResizeObserver
+          const targetContainer = getChatMainContainer();
+          if (targetContainer) {
+            const resizeObserver = new ResizeObserver(() => updateScrollButtonPosition());
+            resizeObserver.observe(targetContainer);
+          }
+          updateScrollButtonPosition(); // Initial positioning
+        }
+      }
     }, CONSTANTS.INJECTION_INTERVAL_MS);
   }
 
@@ -850,10 +941,83 @@
     checkAndInjectButton();
     setupConversationObserver();
 
+    const lastScrollTops = new WeakMap();
+    const lastScrollHeights = new WeakMap();
+    let ignoreScrollUntil = 0;
+    
+    // Global scroll listener for the floating button
+    window.addEventListener('scroll', (e) => {
+      const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+      if (!btn) return;
+      
+      let container = e.target;
+      
+      const isDoc = container === document || container === window || container === document.documentElement || container === document.body;
+      
+      // If it's not the main document/window, it must be a container holding chat turns (the chat list)
+      if (!isDoc) {
+        const containsChatTurns = typeof container.querySelector === 'function' && container.querySelector(SELECTORS.query.chatTurn) !== null;
+        if (!containsChatTurns) {
+          return; // Ignore scroll events from code blocks, dropdowns, side panels, etc.
+        }
+      }
+      
+      if (container === document || container.nodeType === Node.DOCUMENT_NODE) {
+        container = document.documentElement;
+      }
+      
+      // Only check significant scrolling containers
+      if (container.scrollHeight > container.clientHeight + 20) {
+        const currentScrollTop = container.scrollTop;
+        const currentScrollHeight = container.scrollHeight;
+        const distanceToBottom = currentScrollHeight - currentScrollTop - container.clientHeight;
+        
+        let lastScrollTop = lastScrollTops.get(container) || 0;
+        const lastScrollHeight = lastScrollHeights.get(container) || currentScrollHeight;
+        
+        // If scrollHeight changed (e.g. loading older messages at the top), 
+        // adjust lastScrollTop by the height difference to prevent false triggers.
+        if (currentScrollHeight !== lastScrollHeight) {
+          const deltaHeight = currentScrollHeight - lastScrollHeight;
+          lastScrollTop += deltaHeight;
+        }
+        
+        lastScrollTops.set(container, currentScrollTop);
+        lastScrollHeights.set(container, currentScrollHeight);
+        
+        // Ignore scroll events for showing the button if we recently had DOM mutations (like loading history)
+        if (Date.now() < ignoreScrollUntil) {
+          return;
+        }
+        
+        // Hide if at the absolute bottom
+        if (distanceToBottom < 150) {
+          if (scrollStopTimer) {
+            clearTimeout(scrollStopTimer);
+          }
+          btn.classList.add('button-hidden');
+        } else {
+          // Scrolling (any direction) and not at bottom -> show button
+          btn.classList.remove('button-hidden');
+          
+          // Auto-hide the button after 2.5 seconds of inactivity (no scrolling),
+          // but ONLY if the mouse is not currently hovering over it.
+          if (scrollStopTimer) {
+            clearTimeout(scrollStopTimer);
+          }
+          if (!isHoveringScrollButton) {
+            scrollStopTimer = setTimeout(() => {
+              btn.classList.add('button-hidden');
+            }, 2500);
+          }
+        }
+      }
+    }, true);
+
     let lastUrl = window.location.href;
     let debounceTimer;
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
       const currentUrl = window.location.href;
       
       // Always re-run checks if URL changes
@@ -861,6 +1025,18 @@
         lastUrl = currentUrl;
         checkAndInjectButton();
         return;
+      }
+
+      // Check if new elements (like history messages) were added
+      let hasAddedNodes = false;
+      for (const mutation of mutations) {
+        if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+          hasAddedNodes = true;
+          break;
+        }
+      }
+      if (hasAddedNodes) {
+        ignoreScrollUntil = Date.now() + 300; // Ignore scroll events for 300ms
       }
 
       // For all other DOM changes, use a debounce to prevent excessive checks
