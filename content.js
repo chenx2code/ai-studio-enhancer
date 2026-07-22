@@ -130,19 +130,66 @@
       alert(chrome.i18n.getMessage('errorNoDataSource'));
       return;
     }
-    let markdownOutput = '# ' + promptTitle + '\n\n';
-    conversationHistory.forEach(turn => {
-      if (!Array.isArray(turn) || turn.length < 9) return;
-      const content = turn[0] || '';
-      const role = turn[8];
-      const finalContent = turn[2] && typeof turn[2] === 'string' ? turn[2] : content;
-      if (role === 'user' && content) markdownOutput += '## ' + content + '\n\n';
-      else if (role === 'model' && finalContent) markdownOutput += finalContent + '\n\n---\n\n';
-    });
-    navigator.clipboard.writeText(markdownOutput.trim()).then(() => {
-      alert(chrome.i18n.getMessage('successCopied'));
-    }).catch(err => {
-      console.error('Failed to copy text: ', err);
+
+    // Read the setting from storage before exporting
+    chrome.storage.local.get(['includeThoughts'], (result) => {
+      const includeThoughts = result.includeThoughts || false;
+      let markdownOutput = '# ' + promptTitle + '\n\n';
+      
+      for (let i = 0; i < conversationHistory.length; i++) {
+        const turn = conversationHistory[i];
+        if (!Array.isArray(turn) || turn.length < 9) continue;
+        
+        const content = turn[0] || '';
+        const role = turn[8];
+        let finalContent = turn[2] && typeof turn[2] === 'string' ? turn[2] : content;
+        
+        if (role === 'user' && content) {
+          markdownOutput += '## ' + content + '\n\n';
+        } else if (role === 'model' && finalContent) {
+          // Check if the next turn is ALSO a model turn.
+          // In Google AI Studio, the "thinking process" is rendered as a separate preceding model turn.
+          let isThoughtTurn = false;
+          let nextTurnIndex = i + 1;
+          while (nextTurnIndex < conversationHistory.length) {
+            const nextTurn = conversationHistory[nextTurnIndex];
+            if (Array.isArray(nextTurn) && nextTurn.length >= 9) {
+              if (nextTurn[8] === 'model') {
+                isThoughtTurn = true;
+              }
+              break; // Found the next valid turn, stop looking ahead
+            }
+            nextTurnIndex++;
+          }
+          
+          if (isThoughtTurn) {
+            if (includeThoughts) {
+              // Wrap the thought process in markdown blockquotes
+              markdownOutput += '> **[Thought Process / 思考过程]**\n>\n';
+              markdownOutput += finalContent.split('\n').map(line => '> ' + line).join('\n');
+              markdownOutput += '\n\n';
+            }
+            // If includeThoughts is false, we simply skip this turn entirely.
+          } else {
+            // This is the final response turn.
+            // Just in case other models still use <think> tags within the same turn:
+            if (!includeThoughts) {
+              finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>\n*/gi, '');
+              finalContent = finalContent.trim();
+            }
+            
+            if (finalContent) {
+              markdownOutput += finalContent + '\n\n---\n\n';
+            }
+          }
+        }
+      }
+      
+      navigator.clipboard.writeText(markdownOutput.trim()).then(() => {
+        alert(chrome.i18n.getMessage('successCopied'));
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+      });
     });
   }
 
