@@ -992,33 +992,41 @@
 
           // Case 1: User clicked the NATIVE Run Settings button
           if (target.closest(SELECTORS.query.runSettingsButton)) {
-            if (catalogVisible) {
-              const catalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
-              if (catalogPanel) {
-                // Instantly hide the panel by disabling its transition.
-                catalogPanel.classList.add('no-transition');
-                toggleCatalog(false);
-                // Use a short timeout to re-enable the transition for the next time.
-                setTimeout(() => {
-                  catalogPanel.classList.remove('no-transition');
-                }, 50);
-              }
+            if (catalogVisible && e.isTrusted) {
+              // Intercept the click to play the closing animation first
+              e.preventDefault();
+              e.stopPropagation();
+              toggleCatalog(false);
+              
+              // Wait for the animation to finish, then trigger the native panel
+              setTimeout(() => {
+                const runSettingsBtn = document.querySelector(SELECTORS.query.runSettingsButton);
+                if (runSettingsBtn) {
+                  runSettingsBtn.click();
+                }
+              }, 150);
             }
-            // Let the native click proceed to open the settings panel.
           }
           // Case 2: User clicked OUR Catalog button
           else if (target.closest('#' + SELECTORS.id.catalogButton)) {
-            const runSettingsButton = document.querySelector(SELECTORS.query.runSettingsButton);
-            if (!runSettingsButton) {
+            const sidePanel = document.querySelector(SELECTORS.query.nativeSidePanel);
+            // Check if the side panel exists and is visible (implies the native panel is open)
+            const isNativePanelOpen = sidePanel && sidePanel.getBoundingClientRect().width > 0;
+            
+            if (isNativePanelOpen) {
               // Native panel is open, close it first.
-              document.querySelector(SELECTORS.query.nativeSidePanel)?.querySelector(SELECTORS.query.nativeSidePanelCloseButton)?.click();
+              // Since the native close button might be removed, we toggle the run settings button.
+              const runSettingsBtn = document.querySelector(SELECTORS.query.runSettingsButton);
+              if (runSettingsBtn) {
+                runSettingsBtn.click();
+              }
               // The native panel closing also has an animation, so we wait.
-              setTimeout(() => toggleCatalog(), 300);
+              setTimeout(() => toggleCatalog(), 150);
             } else {
               toggleCatalog();
             }
           }
-        });
+        }, true); // Use capture phase to intercept before native Angular handlers
       }
 
       // --- Inject Catalog Panel ---
