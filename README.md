@@ -13,6 +13,10 @@ Main use cases include conversation archiving, content referencing, interaction 
 ### 📋 Markdown Export Feature
 
 *   **One-Click Copy:** Adds an easy-to-use "Copy conversation as Markdown" button to the conversation page toolbar.
+*   **Customizable Export:** Click the extension icon in your browser toolbar to open the settings popup, where you can toggle:
+    *   Include model's thought process
+    *   Include original conversation link
+    *   Include Google account email
 *   **Structured Markdown:** Automatically converts conversations into standard Markdown format:
     *   Conversation title as level-1 heading (`#`).
     *   Each user prompt as level-2 heading (`##`).
@@ -26,7 +30,8 @@ Main use cases include conversation archiving, content referencing, interaction 
 *   **Quick Navigation:** Automatically identifies user prompts in conversations with one-click jump support:
     *   Text prompts show truncated preview (50 characters).
     *   Images display `[Image]` identifier.
-    *   File and other formats display `[File]` identifier.
+    *   Various file types are accurately identified (e.g., `[PDF File]`, `[Markdown File]`, `[Audio File]`, `[YouTube Video]`).
+    *   Unsupported or generic attachments display a fallback `[Document]` identifier.
     *   Click any catalog item to quickly jump to the corresponding position.
 *   **Visual Feedback:** Provides highlight effects during navigation, clearly marking target positions.
 *   **Real-time Sync:** Automatically updates catalog content when conversation changes.
@@ -41,11 +46,9 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 ### :exclamation: Important Prerequisite: Ensure Your Conversation is Saved
 
-**Please note:** To ensure this extension can retrieve the latest content, you must first confirm that your conversation is fully saved. Look for the **"Saved to Drive"** status indicator. For convenience, you can enable the **"Autosave"** feature in the settings. (This extension relies on the internal data update triggered by the save action to access the complete conversation history.)
+**Please note:** Conversations are automatically saved to Google Drive in real-time. To ensure this extension can retrieve the latest content, simply look for the **"Saved to Drive"** status indicator at the top of the page. (This extension relies on the internal data stream triggered by this automatic save action to access the complete conversation history.)
 
 ![SavedtoDrive](https://github.com/user-attachments/assets/001a5ff4-26a0-49e8-9b29-25221ca90356)
-
-![Autosave](https://github.com/user-attachments/assets/acf72302-dc3d-4a45-b6a4-5e8e30050dd6)
 
 ---
 
