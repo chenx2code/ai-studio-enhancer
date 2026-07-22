@@ -46,5 +46,21 @@
   "settingIncludeThoughts": {
     "message": "Include AI thought process in Markdown export",
     "description": "The label for the toggle switch in the popup."
+  },
+  "originalConversation": {
+    "message": "Original Conversation",
+    "description": "The label for the original conversation link appended to the markdown."
+  },
+  "accountInfo": {
+    "message": "Account",
+    "description": "Label for the account information in the exported markdown."
+  },
+  "settingIncludeLink": {
+    "message": "Include original conversation link",
+    "description": "Label for the toggle switch to include original link."
+  },
+  "settingIncludeAccount": {
+    "message": "Include account email",
+    "description": "Label for the toggle switch to include account email."
   }
 }
