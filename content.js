@@ -173,8 +173,35 @@
         const role = turn[8];
         let finalContent = turn[2] && typeof turn[2] === 'string' ? turn[2] : content;
         
-        if (role === 'user' && content) {
-          markdownOutput += '## ' + content + '\n\n';
+        if (role === 'user') {
+          const textContent = turn[0] || '';
+          const imageContent = turn[1];
+          const youtubeContent = turn[13];
+          const docContent = turn[23];
+          
+          let placeholder = '';
+          
+          if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
+            placeholder = '> [Image]\n\n';
+          } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
+            placeholder = '> [YouTube Video]\n\n';
+          } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
+            const friendlyType = getFriendlyFileType(docContent[0]);
+            if (friendlyType === 'Document') {
+              placeholder = '> [Document]\n\n';
+            } else {
+              placeholder = `> [${friendlyType} File]\n\n`;
+            }
+          } else if (!textContent) {
+            placeholder = '> [Attachment]\n\n';
+          }
+
+          if (textContent) {
+             markdownOutput += placeholder + '## ' + textContent + '\n\n';
+          } else if (placeholder) {
+             // If no text at all, convert the placeholder into a heading to maintain Markdown structure
+             markdownOutput += placeholder.replace('> ', '## ');
+          }
         } else if (role === 'model' && finalContent) {
           // Check if the next turn is ALSO a model turn.
           // In Google AI Studio, the "thinking process" is rendered as a separate preceding model turn.
@@ -227,6 +254,36 @@
    */
 
   /**
+   * Helper function to map MIME types to user-friendly file types
+   * @param {string} mimeType - The MIME type string from the API
+   * @returns {string} Friendly file type name
+   */
+  function getFriendlyFileType(mimeType) {
+    if (!mimeType || typeof mimeType !== 'string') return 'Document';
+    const type = mimeType.toLowerCase();
+    
+    if (type.includes('pdf')) return 'PDF';
+    if (type.includes('markdown') || type.includes('md')) return 'Markdown';
+    if (type.includes('csv')) return 'CSV';
+    if (type.includes('json')) return 'JSON';
+    if (type.includes('html')) return 'HTML';
+    if (type.includes('xml')) return 'XML';
+    if (type.includes('text/plain')) return 'Text';
+    if (type.includes('python')) return 'Python';
+    if (type.includes('javascript') || type.includes('typescript')) return 'JS/TS';
+    
+    // Fallback: try to extract a clean subtype if it's simple
+    const parts = type.split('/');
+    if (parts.length === 2) {
+      const subType = parts[1];
+      if (subType.length <= 8 && !subType.includes('vnd') && !subType.includes('+')) {
+        return subType.toUpperCase();
+      }
+    }
+    return 'Document';
+  }
+
+  /**
    * Truncate text to specified length with ellipsis
    * @param {string} text - Text to truncate
    * @param {number} maxLength - Maximum length (default: 50)
@@ -261,6 +318,8 @@
       if (role === 'user') {
         const textContent = turn[0] || '';
         const imageContent = turn[1];
+        const youtubeContent = turn[13];
+        const docContent = turn[23];
 
         let promptText = '';
         let contentType = 'text';
@@ -271,14 +330,17 @@
           promptText = textContent.trim();
           contentType = 'text';
         } else if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-          // Image prompt (when turn[0] is empty but turn[1] has content)
           promptText = '[Image]';
           contentType = 'image';
+        } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
+          promptText = '[YouTube Video]';
+          contentType = 'video';
+        } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
+          const friendlyType = getFriendlyFileType(docContent[0]);
+          promptText = friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`;
+          contentType = friendlyType.toLowerCase();
         } else {
-          // Fallback for other content types like documents/files.
-          // Instead of skipping the turn, we create a placeholder entry.
-          // This is crucial for keeping the catalog index synchronized with the
-          // actual number of user prompts in the DOM, fixing navigation.
+          // Fallback for other content types
           promptText = '[File]';
           contentType = 'file';
         }
