@@ -38,5 +38,13 @@
   "tooltipScrollToBottom": {
     "message": "滚动到底部",
     "description": "滚动到底部按钮的工具提示文本。"
+  },
+  "popupTitle": {
+    "message": "设置",
+    "description": "扩展弹窗的标题。"
+  },
+  "settingIncludeThoughts": {
+    "message": "导出 Markdown 时包含模型思考过程",
+    "description": "弹窗中切换开关的标签文本。"
   }
 }

@@ -38,5 +38,13 @@
   "tooltipScrollToBottom": {
     "message": "Scroll to bottom",
     "description": "The tooltip text for the scroll to bottom button."
+  },
+  "popupTitle": {
+    "message": "Settings",
+    "description": "The title of the extension popup."
+  },
+  "settingIncludeThoughts": {
+    "message": "Include AI thought process in Markdown export",
+    "description": "The label for the toggle switch in the popup."
   }
 }
