@@ -50,6 +50,9 @@ jobs:
                             content.js \
                             interceptor.js \
                             styles.css \
+                            popup.html \
+                            popup.js \
+                            popup.css \
                             manifest.json
 
                   - name: Generate changelog
