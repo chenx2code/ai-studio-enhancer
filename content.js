@@ -132,9 +132,38 @@
     }
 
     // Read the setting from storage before exporting
-    chrome.storage.local.get(['includeThoughts'], (result) => {
+    chrome.storage.local.get(['includeThoughts', 'includeLink', 'includeAccount'], (result) => {
       const includeThoughts = result.includeThoughts || false;
+      const includeLink = result.includeLink || false;
+      const includeAccount = result.includeAccount || false;
       let markdownOutput = '# ' + promptTitle + '\n\n';
+      
+      if (includeAccount || includeLink) {
+        // Attempt to extract the account email from the DOM
+        let accountEmail = '';
+        if (includeAccount) {
+          const accountNode = document.querySelector('[aria-label*="@"]');
+          if (accountNode) {
+            const ariaLabel = accountNode.getAttribute('aria-label');
+            // Match standard email formats
+            const emailMatch = ariaLabel.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+              accountEmail = emailMatch[1];
+            }
+          }
+        }
+
+        if (includeAccount && accountEmail) {
+          const accountText = chrome.i18n.getMessage('accountInfo') || 'Account';
+          markdownOutput += `> **${accountText}:** ${accountEmail}\n`;
+        }
+        
+        if (includeLink) {
+          const originalLinkText = chrome.i18n.getMessage('originalConversation') || 'Original Conversation';
+          markdownOutput += `> **${originalLinkText}:** [${window.location.href}](${window.location.href})\n`;
+        }
+        markdownOutput += `\n---\n\n`;
+      }
       
       for (let i = 0; i < conversationHistory.length; i++) {
         const turn = conversationHistory[i];

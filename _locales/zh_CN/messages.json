@@ -46,5 +46,21 @@
   "settingIncludeThoughts": {
     "message": "导出 Markdown 时包含模型思考过程",
     "description": "弹窗中切换开关的标签文本。"
+  },
+  "originalConversation": {
+    "message": "原始对话链接",
+    "description": "追加在 Markdown 结尾的原始对话链接标签。"
+  },
+  "accountInfo": {
+    "message": "账号",
+    "description": "导出的 Markdown 中账号信息的标签。"
+  },
+  "settingIncludeLink": {
+    "message": "导出时包含原始对话链接",
+    "description": "弹窗中切换开关的标签文本。"
+  },
+  "settingIncludeAccount": {
+    "message": "导出时包含当前账号邮箱",
+    "description": "弹窗中切换开关的标签文本。"
   }
 }
