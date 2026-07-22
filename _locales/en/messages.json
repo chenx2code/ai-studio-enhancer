@@ -62,5 +62,17 @@
   "settingIncludeAccount": {
     "message": "Include account email",
     "description": "Label for the toggle switch to include account email."
+  },
+  "settingEnableNotifications": {
+    "message": "Enable Desktop Notifications when generation is complete (background only)",
+    "description": "Label for the toggle switch to enable desktop notifications."
+  },
+  "notificationTitle": {
+    "message": "Generation Complete",
+    "description": "Title of the desktop notification."
+  },
+  "notificationMessage": {
+    "message": "Google AI Studio has finished generating a response.",
+    "description": "Message body of the desktop notification."
   }
 }

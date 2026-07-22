@@ -1189,6 +1189,59 @@
     }, true);
 
     let lastUrl = window.location.href;
+    
+    // --- Generation State Tracking ---
+    let isGenerating = false;
+    let enableNotifications = true;
+    
+    // Load initial settings
+    chrome.storage.local.get(['enableNotifications'], (result) => {
+      enableNotifications = result.enableNotifications !== false;
+    });
+
+    // Listen for settings change
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === 'local' && changes.enableNotifications) {
+        enableNotifications = changes.enableNotifications.newValue;
+      }
+    });
+
+    function checkGenerationState() {
+      if (!enableNotifications) return;
+
+      // Find the specific AI Studio 'Stop' button during generation
+      // According to DOM structure: button.ms-button-primary containing <span ...>Stop</span>
+      const buttons = Array.from(document.querySelectorAll('button.ms-button-primary'));
+      const stopBtn = buttons.find(btn => 
+        btn.textContent.includes('Stop') && 
+        (btn.querySelector('.spin') || btn.textContent.includes('progress_activity'))
+      );
+
+      if (stopBtn && !isGenerating) {
+        // AI started generating
+        isGenerating = true;
+      } else if (!stopBtn && isGenerating) {
+        // AI finished generating
+        isGenerating = false;
+        
+        // Trigger desktop notification ONLY if the user is not actively viewing the tab
+        // document.hidden covers tab switches/minimize. !document.hasFocus() covers virtual desktops and side-by-side app switching.
+        if (document.hidden || !document.hasFocus()) {
+          try {
+            const fallbackTitle = document.title ? document.title.replace(' - Google AI Studio', '') : '';
+            const finalTitle = (typeof promptTitle !== 'undefined' && promptTitle !== chrome.i18n.getMessage('promptTitleDefault')) ? promptTitle : fallbackTitle;
+            
+            chrome.runtime.sendMessage({ 
+              type: 'GENERATION_COMPLETE',
+              chatTitle: finalTitle
+            });
+          } catch(e) {
+            console.error('Failed to send notification message:', e);
+          }
+        }
+      }
+    }
+
     let debounceTimer;
 
     const observer = new MutationObserver((mutations) => {
@@ -1220,6 +1273,7 @@
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         checkAndInjectButton();
+        checkGenerationState(); // Check if generation finished
       }, 150); // Debounce to handle rapid DOM updates
     });
 
