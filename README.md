@@ -40,6 +40,13 @@ Main use cases include conversation archiving, content referencing, interaction 
     *   Visual indicators appear when a catalog item gains focus.
     *   Press Enter or Space to jump to the corresponding conversation position.
 
+### 🔔 Smart Background Notifications
+
+*   **Generation Complete Alert:** Sends a native OS desktop notification when AI finishes generating a response.
+*   **Smart Do-Not-Disturb:** Notifications are only triggered when you are away from the tab (e.g., switched tabs, minimized, or working on another monitor). It will never interrupt you if you are actively viewing the conversation.
+*   **Contextual Titles:** The notification includes the current conversation title so you immediately know which task has completed.
+*   **Customizable:** Can be easily toggled on or off in the extension settings popup.
+
 ---
 
 ## 💡 How to Use

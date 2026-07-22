@@ -6,8 +6,12 @@
   "description": "__MSG_extensionDescription__",
   "permissions": [
     "clipboardWrite",
-    "storage"
+    "storage",
+    "notifications"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://aistudio.google.com/*"],

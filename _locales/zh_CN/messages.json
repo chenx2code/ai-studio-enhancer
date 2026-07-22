@@ -62,5 +62,17 @@
   "settingIncludeAccount": {
     "message": "导出时包含当前账号邮箱",
     "description": "弹窗中切换开关的标签文本。"
+  },
+  "settingEnableNotifications": {
+    "message": "生成完毕时发送桌面通知（仅在页面处于后台时触发）",
+    "description": "弹窗中切换开关的标签文本。"
+  },
+  "notificationTitle": {
+    "message": "生成完成",
+    "description": "桌面通知的标题。"
+  },
+  "notificationMessage": {
+    "message": "Google AI Studio 已经完成回复生成。",
+    "description": "桌面通知的正文内容。"
   }
 }
