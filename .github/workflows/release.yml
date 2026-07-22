@@ -6,6 +6,7 @@ on:
                   - master
             paths:
                   - "manifest.json"
+                  - "background.js"
                   - "content.js"
                   - "interceptor.js"
                   - "styles.css"
@@ -47,6 +48,7 @@ jobs:
                           zip -r dist/ai-studio-enhancer-v${{ env.VERSION }}.zip \
                             _locales \
                             icons \
+                            background.js \
                             content.js \
                             interceptor.js \
                             styles.css \

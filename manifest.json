@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "default_locale": "en",
   "description": "__MSG_extensionDescription__",
   "permissions": [
@@ -14,16 +14,26 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://aistudio.google.com/*"],
+      "matches": [
+        "https://aistudio.google.com/*"
+      ],
       "run_at": "document_start",
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["interceptor.js"], 
-      "matches": ["https://aistudio.google.com/*"]
+      "resources": [
+        "interceptor.js"
+      ],
+      "matches": [
+        "https://aistudio.google.com/*"
+      ]
     }
   ],
   "action": {
