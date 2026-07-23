@@ -244,8 +244,15 @@
     const lastScrollHeights = new WeakMap();
     let ignoreScrollUntil = 0;
     
+    let isScrolling = false;
     // Global scroll listener for the floating button
     window.addEventListener('scroll', (e) => {
+      if (isScrolling) return;
+      isScrolling = true;
+      setTimeout(() => {
+        isScrolling = false;
+      }, 50); // Throttle to roughly 20fps
+
       const btn = document.getElementById(Utils.SELECTORS.id.scrollToBottomButton);
       if (!btn) return;
       
@@ -329,8 +336,7 @@
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true,
-      attributes: true
+      subtree: true
     });
 
     document.addEventListener('mousedown', (e) => {

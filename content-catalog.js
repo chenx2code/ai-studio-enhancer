@@ -183,12 +183,14 @@
     if (nativePanel) {
       initObserver(nativePanel);
     } else {
+      let retryCount = 0;
       const interval = setInterval(() => {
         nativePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
-        if (nativePanel) {
+        if (nativePanel || retryCount >= 20) {
           clearInterval(interval);
-          initObserver(nativePanel);
+          if (nativePanel) initObserver(nativePanel);
         }
+        retryCount++;
       }, 500);
     }
   }
