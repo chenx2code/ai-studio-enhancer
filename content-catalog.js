@@ -135,6 +135,21 @@
     });
   }
 
+  function setupWindowListeners() {
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (catalogVisible) {
+          const sidePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
+          if (sidePanel && sidePanel.getBoundingClientRect().width > 0) {
+            toggleCatalog(false);
+          }
+        }
+      }, 300);
+    });
+  }
+
   function highlightElement(element) {
     const originalBackground = element.style.backgroundColor;
     const originalTransition = element.style.transition;
@@ -387,6 +402,7 @@
   global.__AIStudioEnhancer__.Catalog = {
     updateCatalogData,
     setupConversationObserver,
+    setupWindowListeners,
     createCatalogPanel,
     toggleCatalog,
     scrollToBottom,

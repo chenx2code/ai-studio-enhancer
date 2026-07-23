@@ -241,6 +241,7 @@
   function initialize() {
     checkAndInjectButton();
     Catalog.setupConversationObserver();
+    Catalog.setupWindowListeners();
     Notification.initObserver();
 
     const lastScrollTops = new WeakMap();
