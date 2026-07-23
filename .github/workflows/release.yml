@@ -8,6 +8,11 @@ on:
                   - "manifest.json"
                   - "background.js"
                   - "content.js"
+                  - "content-utils.js"
+                  - "content-state.js"
+                  - "content-markdown.js"
+                  - "content-catalog.js"
+                  - "content-notification.js"
                   - "interceptor.js"
                   - "styles.css"
                   - "_locales/**"
@@ -50,6 +55,11 @@ jobs:
                             icons \
                             background.js \
                             content.js \
+                            content-utils.js \
+                            content-state.js \
+                            content-markdown.js \
+                            content-catalog.js \
+                            content-notification.js \
                             interceptor.js \
                             styles.css \
                             popup.html \
