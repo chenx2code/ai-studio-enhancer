@@ -136,18 +136,59 @@
   }
 
   function setupWindowListeners() {
-    let resizeTimer;
+    let isWindowResizing = false;
+    let windowResizeTimer = null;
+
+    // Listen to actual window resizes to set a flag
     window.addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        if (catalogVisible) {
-          const sidePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
-          if (sidePanel && sidePanel.getBoundingClientRect().width > 0) {
-            toggleCatalog(false);
-          }
-        }
-      }, 300);
+      isWindowResizing = true;
+      clearTimeout(windowResizeTimer);
+      windowResizeTimer = setTimeout(() => {
+        isWindowResizing = false;
+      }, 500); // Wait 500ms after resize ends
     });
+
+    let nativePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
+    let previousWidth = 0;
+    
+    const initObserver = (panel) => {
+      previousWidth = panel.getBoundingClientRect().width;
+      
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          const currentWidth = entry.contentRect.width;
+          
+          // Only trigger anti-overlap if expanding AND caused by window resize
+          if (currentWidth > previousWidth && currentWidth > 0 && catalogVisible && isWindowResizing) {
+            const catalogPanel = document.getElementById(Utils.SELECTORS.id.catalogPanel);
+            if (catalogPanel) {
+              // 1. Insta-kill the animation
+              catalogPanel.style.setProperty('transition', 'none', 'important');
+              // 2. Hide the panel
+              toggleCatalog(false);
+              // 3. Restore animation capability for the next time
+              setTimeout(() => {
+                catalogPanel.style.removeProperty('transition');
+              }, 50);
+            }
+          }
+          previousWidth = currentWidth;
+        }
+      });
+      resizeObserver.observe(panel);
+    };
+
+    if (nativePanel) {
+      initObserver(nativePanel);
+    } else {
+      const interval = setInterval(() => {
+        nativePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
+        if (nativePanel) {
+          clearInterval(interval);
+          initObserver(nativePanel);
+        }
+      }, 500);
+    }
   }
 
   function highlightElement(element) {
