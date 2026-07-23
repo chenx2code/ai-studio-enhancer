@@ -110,6 +110,7 @@
     const conversationContainer = document.querySelector(Utils.SELECTORS.query.conversationObserverTarget);
     if (!conversationContainer) return;
 
+    let validationTimer = null;
     const observer = new MutationObserver((mutations) => {
       let shouldValidate = false;
       mutations.forEach((mutation) => {
@@ -125,7 +126,8 @@
         }
       });
       if (shouldValidate) {
-        setTimeout(validateCatalogData, 100);
+        clearTimeout(validationTimer);
+        validationTimer = setTimeout(validateCatalogData, 100);
       }
     });
 
