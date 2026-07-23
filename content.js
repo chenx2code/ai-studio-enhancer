@@ -73,25 +73,22 @@
       return;
     }
 
-    const injectionInterval = setInterval(() => {
-      const toolbarRight = document.querySelector('.toolbar-right');
-      if (!toolbarRight) return;
+    const toolbarRight = document.querySelector('.toolbar-right');
+    if (!toolbarRight) return;
 
-      const temporaryChatToggle = document.querySelector(Utils.SELECTORS.query.temporaryChatToggle);
-      const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
-      const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
+    const temporaryChatToggle = document.querySelector(Utils.SELECTORS.query.temporaryChatToggle);
+    const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
+    const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
 
-      if (isToggleActive || isIndicatorPresent) {
-        document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
-        document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
-        document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
-        document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
-        return;
-      }
+    if (isToggleActive || isIndicatorPresent) {
+      document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
+      return;
+    }
 
-      clearInterval(injectionInterval);
-
-      // --- Inject Export Markdown Button ---
+    // --- Inject Export Markdown Button ---
       if (!document.getElementById(Utils.SELECTORS.id.exportButton)) {
         const exportButton = Utils.createToolbarButton(
           Utils.SELECTORS.id.exportButton, 
@@ -232,7 +229,6 @@
           Catalog.updateScrollButtonPosition();
         }
       }
-    }, Utils.CONSTANTS.INJECTION_INTERVAL_MS);
   }
 
   /**
