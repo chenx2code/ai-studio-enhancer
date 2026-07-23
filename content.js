@@ -1,82 +1,21 @@
-(function () {
+(function (global) {
   'use strict';
 
-  /**
-   * Configuration object for storing all fragile CSS selectors and class names.
-   * Centralizing these makes the extension more resilient to website updates.
-   * If Google AI Studio changes its layout, we only need to update the values here.
-   */
-  const SELECTORS = {
-    // --- Host Page Queries ---
-    // Selectors for finding elements on the Google AI Studio page.
-    query: {
-      toolbar: 'ms-toolbar .toolbar-container',
-      runSettingsButton: '[iconname="tune"], [aria-label*="run settings"], [aria-label*="Run settings"], [aria-label*="settings panel"]',
-      moreActionsButton: 'button[aria-label="View more actions"]',
-      nativeSidePanel: 'ms-right-side-panel',
-      nativeSidePanelCloseButton: 'ms-right-side-panel button[iconname="close"]',
-      chunkEditor: 'ms-chunk-editor',
-      chatTurn: 'ms-chat-turn',
-      chatTurnContainer: '.chat-turn-container',
-      conversationObserverTarget: 'body',
-      temporaryChatToggle: 'ms-incognito-mode-toggle',
-      temporaryChatIndicator: 'ms-incognito-mode-indicator',
-    },
+  // Wait for namespace to be ready (it should be, since files are loaded in order)
+  const Enhancer = global.__AIStudioEnhancer__;
+  if (!Enhancer || !Enhancer.Utils || !Enhancer.State || !Enhancer.Markdown || !Enhancer.Catalog || !Enhancer.Notification) {
+    console.error('AI Studio Enhancer: Modules failed to load properly.');
+    return;
+  }
 
-    // --- Host Page Classes ---
-    // Class names used by the native UI that we need to interact with or mimic.
-    class: {
-      userTurn: 'user',
-      // Classes mimicked from the native UI for consistent styling
-      nativePanelHeader: 'header',
-      nativePanelTitle: 'no-select v3-font-headline-2',
-      nativeMaterialIcon: 'material-symbols-outlined notranslate',
-      nativeSettingsWrapper: 'settings-items-wrapper',
-      nativeScrollableArea: 'scrollable-area',
-    },
-
-    // --- Host Page Tags ---
-    // Tag names of key elements on the host page.
-    tag: {
-      chatTurn: 'ms-chat-turn',
-    },
-
-    // --- Extension-Specific IDs ---
-    // Unique IDs for elements injected by this extension.
-    id: {
-      exportButton: 'export-markdown-btn',
-      catalogButton: 'catalog-toggle-btn',
-      catalogPanel: 'catalog-side-panel',
-      catalogListContainer: 'catalog-list-container',
-      scrollToBottomButton: 'scroll-to-bottom-btn',
-    },
-
-    // --- Extension-Specific Classes ---
-    // Class names for elements injected by this extension.
-    classExt: {
-      panelVisible: 'panel-visible',
-      buttonHidden: 'button-hidden',
-    }
-  };
+  const Utils = Enhancer.Utils;
+  const State = Enhancer.State;
+  const Markdown = Enhancer.Markdown;
+  const Catalog = Enhancer.Catalog;
+  const Notification = Enhancer.Notification;
 
   /**
-   * Constants for magic values used throughout the script.
-   */
-  const CONSTANTS = {
-    INJECTION_INTERVAL_MS: 500,
-    HIGHLIGHT_DURATION_MS: 1500,
-    HIGHLIGHT_FADE_OUT_MS: 300,
-  };
-
-  let conversationHistory = null;
-  let promptTitle = chrome.i18n.getMessage('promptTitleDefault');
-  let catalogData = [];
-  let catalogVisible = false;
-  let scrollStopTimer = null;
-  let isHoveringScrollButton = false;
-
-  /**
-   * PART 1: 脚本注射器
+   * PART 1: Inject Interceptor Script
    */
   const s = document.createElement('script');
   s.src = chrome.runtime.getURL('interceptor.js');
@@ -84,11 +23,10 @@
   (document.head || document.documentElement).appendChild(s);
 
   /**
-   * PART 2: 消息监听器
+   * PART 2: Message Listener from Interceptor
    */
   window.addEventListener('message', function (event) {
     if (event.source === window && event.data && event.data.type === 'FROM_INTERCEPTOR') {
-
       const data = event.data.payload;
       const apiKeyword = event.data.apiKeyword;
 
@@ -104,837 +42,34 @@
           promptData = data?.[4];
         }
 
-        // 提取对话历史
+        // Update conversation history
         if (turns && Array.isArray(turns)) {
-          conversationHistory = turns;
-          // Update catalog data when conversation history changes
-          updateCatalogData(conversationHistory);
+          State.setHistory(turns);
+          Catalog.updateCatalogData(turns);
         }
 
-        // 提取标题
+        // Update prompt title
         if (promptData && promptData[0]) {
-          promptTitle = promptData[0];
+          State.setTitle(promptData[0]);
         }
-
       } catch (e) {
-        console.error('处理接收到的数据时出错:', e);
+        console.error('AI Studio Enhancer: Error processing intercepted data:', e);
       }
     }
   });
 
   /**
-   * PART 3: 核心导出功能 
-   */
-  function exportToMarkdown() {
-    if (!conversationHistory) {
-      alert(chrome.i18n.getMessage('errorNoDataSource'));
-      return;
-    }
-
-    // Read the setting from storage before exporting
-    chrome.storage.local.get(['includeThoughts', 'includeLink', 'includeAccount'], (result) => {
-      const includeThoughts = result.includeThoughts || false;
-      const includeLink = result.includeLink || false;
-      const includeAccount = result.includeAccount || false;
-      let markdownOutput = '# ' + promptTitle + '\n\n';
-      
-      if (includeAccount || includeLink) {
-        // Attempt to extract the account email from the DOM
-        let accountEmail = '';
-        if (includeAccount) {
-          const accountNode = document.querySelector('[aria-label*="@"]');
-          if (accountNode) {
-            const ariaLabel = accountNode.getAttribute('aria-label');
-            // Match standard email formats
-            const emailMatch = ariaLabel.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-            if (emailMatch) {
-              accountEmail = emailMatch[1];
-            }
-          }
-        }
-
-        if (includeAccount && accountEmail) {
-          const accountText = chrome.i18n.getMessage('accountInfo') || 'Account';
-          markdownOutput += `> **${accountText}:** ${accountEmail}\n`;
-        }
-        
-        if (includeLink) {
-          const originalLinkText = chrome.i18n.getMessage('originalConversation') || 'Original Conversation';
-          markdownOutput += `> **${originalLinkText}:** [${window.location.href}](${window.location.href})\n`;
-        }
-        markdownOutput += `\n---\n\n`;
-      }
-      
-      for (let i = 0; i < conversationHistory.length; i++) {
-        const turn = conversationHistory[i];
-        if (!Array.isArray(turn) || turn.length < 9) continue;
-        
-        const content = turn[0] || '';
-        const role = turn[8];
-        let finalContent = turn[2] && typeof turn[2] === 'string' ? turn[2] : content;
-        
-        if (role === 'user') {
-          const textContent = turn[0] || '';
-          const imageContent = turn[1];
-          const youtubeContent = turn[13];
-          const docContent = turn[23];
-          
-          let placeholder = '';
-          
-          if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-            placeholder = '> [Image]\n\n';
-          } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-            placeholder = '> [YouTube Video]\n\n';
-          } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-            const friendlyType = getFriendlyFileType(docContent[0]);
-            if (friendlyType === 'Document') {
-              placeholder = '> [Document]\n\n';
-            } else {
-              placeholder = `> [${friendlyType} File]\n\n`;
-            }
-          } else if (!textContent) {
-            placeholder = '> [Attachment]\n\n';
-          }
-
-          if (textContent) {
-             markdownOutput += placeholder + '## ' + textContent + '\n\n';
-          } else if (placeholder) {
-             // If no text at all, convert the placeholder into a heading to maintain Markdown structure
-             markdownOutput += placeholder.replace('> ', '## ');
-          }
-        } else if (role === 'model' && finalContent) {
-          // Check if the next turn is ALSO a model turn.
-          // In Google AI Studio, the "thinking process" is rendered as a separate preceding model turn.
-          let isThoughtTurn = false;
-          let nextTurnIndex = i + 1;
-          while (nextTurnIndex < conversationHistory.length) {
-            const nextTurn = conversationHistory[nextTurnIndex];
-            if (Array.isArray(nextTurn) && nextTurn.length >= 9) {
-              if (nextTurn[8] === 'model') {
-                isThoughtTurn = true;
-              }
-              break; // Found the next valid turn, stop looking ahead
-            }
-            nextTurnIndex++;
-          }
-          
-          if (isThoughtTurn) {
-            if (includeThoughts) {
-              // Wrap the thought process in markdown blockquotes
-              markdownOutput += '> **[Thought Process / 思考过程]**\n>\n';
-              markdownOutput += finalContent.split('\n').map(line => '> ' + line).join('\n');
-              markdownOutput += '\n\n';
-            }
-            // If includeThoughts is false, we simply skip this turn entirely.
-          } else {
-            // This is the final response turn.
-            // Just in case other models still use <think> tags within the same turn:
-            if (!includeThoughts) {
-              finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>\n*/gi, '');
-              finalContent = finalContent.trim();
-            }
-            
-            if (finalContent) {
-              markdownOutput += finalContent + '\n\n---\n\n';
-            }
-          }
-        }
-      }
-      
-      navigator.clipboard.writeText(markdownOutput.trim()).then(() => {
-        alert(chrome.i18n.getMessage('successCopied'));
-      }).catch(err => {
-        console.error('Failed to copy text: ', err);
-      });
-    });
-  }
-
-  /**
-   * PART 3.5: 目录数据管理功能
-   */
-
-  /**
-   * Helper function to map MIME types to user-friendly file types
-   * @param {string} mimeType - The MIME type string from the API
-   * @returns {string} Friendly file type name
-   */
-  function getFriendlyFileType(mimeType) {
-    if (!mimeType || typeof mimeType !== 'string') return 'Document';
-    const type = mimeType.toLowerCase();
-    
-    if (type.includes('pdf')) return 'PDF';
-    if (type.includes('markdown') || type.includes('md')) return 'Markdown';
-    if (type.includes('csv')) return 'CSV';
-    if (type.includes('json')) return 'JSON';
-    if (type.includes('html')) return 'HTML';
-    if (type.includes('xml')) return 'XML';
-    if (type.includes('text/plain')) return 'Text';
-    if (type.includes('python')) return 'Python';
-    if (type.includes('javascript') || type.includes('typescript')) return 'JS/TS';
-    
-    // Fallback: try to extract a clean subtype if it's simple
-    const parts = type.split('/');
-    if (parts.length === 2) {
-      const subType = parts[1];
-      if (subType.length <= 8 && !subType.includes('vnd') && !subType.includes('+')) {
-        return subType.toUpperCase();
-      }
-    }
-    return 'Document';
-  }
-
-  /**
-   * Truncate text to specified length with ellipsis
-   * @param {string} text - Text to truncate
-   * @param {number} maxLength - Maximum length (default: 50)
-   * @returns {string} Truncated text with ellipsis if needed
-   */
-  function truncateText(text, maxLength = 50) {
-    if (!text || typeof text !== 'string') return '';
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-  }
-
-  /**
-   * Extract and filter user prompts from conversation history
-   * @param {Array} conversationTurns - Array of conversation turns
-   * @returns {Array} Array of catalog items with user prompts
-   */
-  function extractUserPrompts(conversationTurns) {
-    if (!Array.isArray(conversationTurns)) {
-      return [];
-    }
-
-    const userPrompts = [];
-
-    conversationTurns.forEach((turn, index) => {
-      // Validate turn structure
-      if (!Array.isArray(turn) || turn.length < 9) {
-        return;
-      }
-
-      const role = turn[8];
-
-      // Filter for user prompts only
-      if (role === 'user') {
-        const textContent = turn[0] || '';
-        const imageContent = turn[1];
-        const youtubeContent = turn[13];
-        const docContent = turn[23];
-
-        let promptText = '';
-        let contentType = 'text';
-
-        // Handle different content types
-        if (textContent && textContent.trim()) {
-          // Text prompt
-          promptText = textContent.trim();
-          contentType = 'text';
-        } else if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-          promptText = '[Image]';
-          contentType = 'image';
-        } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-          promptText = '[YouTube Video]';
-          contentType = 'video';
-        } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-          const friendlyType = getFriendlyFileType(docContent[0]);
-          promptText = friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`;
-          contentType = friendlyType.toLowerCase();
-        } else {
-          // Fallback for other content types
-          promptText = '[File]';
-          contentType = 'file';
-        }
-
-        // Try to find the corresponding DOM element to get its ID
-        let turnElementId = null;
-        const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
-
-        // Find user turns and match by index
-        let userTurnCount = 0;
-        for (const chatTurn of chatTurns) {
-          const container = chatTurn.querySelector(SELECTORS.query.chatTurnContainer);
-          if (container && container.classList.contains(SELECTORS.class.userTurn)) {
-            if (userTurnCount === userPrompts.length) {
-              // This is the DOM element for current user prompt
-              turnElementId = chatTurn.id;
-              break;
-            }
-            userTurnCount++;
-          }
-        }
-
-        // Create catalog item
-        const catalogItem = {
-          turnIndex: index,
-          turnElementId: turnElementId, // Store the DOM element ID
-          promptText: promptText,
-          truncatedText: truncateText(promptText, 50),
-          contentType: contentType,
-          role: role
-        };
-
-        userPrompts.push(catalogItem);
-      }
-    });
-
-    return userPrompts;
-  }
-
-  /**
-   * Update catalog data with current conversation history
-   * @param {Array} conversationTurns - Current conversation history
-   */
-  function updateCatalogData(conversationTurns) {
-    try {
-      catalogData = extractUserPrompts(conversationTurns);
-
-      // If catalog is currently visible, re-render the prompt list
-      if (catalogVisible) {
-        renderPromptList();
-      }
-    } catch (error) {
-      console.error('Error updating catalog data:', error);
-      catalogData = [];
-
-      // If catalog is currently visible, re-render to show empty state
-      if (catalogVisible) {
-        renderPromptList();
-      }
-    }
-  }
-
-  /**
-   * Validate and clean up catalog data by checking if DOM elements still exist
-   */
-  function validateCatalogData() {
-    if (!catalogData || catalogData.length === 0) {
-      return;
-    }
-
-    const validItems = catalogData.filter(item => {
-      if (item.turnElementId) {
-        const element = document.getElementById(item.turnElementId);
-        return element !== null;
-      }
-      return true; // Keep items without ID for fallback
-    });
-
-    if (validItems.length !== catalogData.length) {
-      catalogData = validItems;
-
-      // Re-render catalog if visible
-      if (catalogVisible) {
-        renderPromptList();
-      }
-    }
-  }
-
-  /**
-   * Set up DOM mutation observer to detect conversation changes
-   */
-  function setupConversationObserver() {
-    // Find the conversation container
-    const conversationContainer = document.querySelector(SELECTORS.query.conversationObserverTarget);
-    if (!conversationContainer) {
-      return;
-    }
-
-    // Create mutation observer to watch for DOM changes
-    const observer = new MutationObserver((mutations) => {
-      let shouldValidate = false;
-
-      mutations.forEach((mutation) => {
-        // Check if any ms-chat-turn elements were removed
-        if (mutation.type === 'childList') {
-          mutation.removedNodes.forEach((node) => {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              if (node.tagName.toLowerCase() === SELECTORS.tag.chatTurn ||
-                node.querySelector && node.querySelector(SELECTORS.query.chatTurn)) {
-                shouldValidate = true;
-              }
-            }
-          });
-        }
-      });
-
-      if (shouldValidate) {
-        // Use setTimeout to ensure DOM changes are complete
-        setTimeout(validateCatalogData, 100);
-      }
-    });
-
-    // Start observing
-    observer.observe(conversationContainer, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  /**
-   * PART 3.6: 滚动导航功能
-   */
-
-  /**
-   * Navigate to a specific prompt in the conversation by scrolling to it
-   * @param {number} turnIndex - The turn index to navigate to
-   */
-  function navigateToPrompt(turnIndex) {
-    try {
-      // Find the catalog item that corresponds to this turnIndex
-      const catalogItem = catalogData.find(item => item.turnIndex === turnIndex);
-      if (!catalogItem) {
-        console.warn('Could not find catalog item for turn index:', turnIndex);
-        return;
-      }
-
-      // Use direct ID-based navigation if available
-      if (catalogItem.turnElementId) {
-        const targetElement = document.getElementById(catalogItem.turnElementId);
-        if (targetElement) {
-          // Scroll to the target element with smooth behavior
-          targetElement.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start',
-            inline: 'nearest'
-          });
-
-          // Add visual highlight to indicate the navigated-to element
-          highlightElement(targetElement);
-          return;
-        } else {
-          console.warn('Could not find element with ID:', catalogItem.turnElementId);
-        }
-      }
-
-      // Fallback to index-based navigation if ID method fails
-      // Find all ms-chat-turn elements (Google AI Studio's conversation structure)
-      const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
-
-      if (chatTurns.length === 0) {
-        console.warn('Could not find ms-chat-turn elements for navigation');
-        return;
-      }
-
-      // Extract user turns only by looking for "user" class
-      const userTurns = [];
-      chatTurns.forEach((turn, index) => {
-        const container = turn.querySelector(SELECTORS.query.chatTurnContainer);
-        if (container && container.classList.contains(SELECTORS.class.userTurn)) {
-          userTurns.push({
-            element: turn,
-            domIndex: index
-          });
-        }
-      });
-
-      // Find the catalog item's position in our user-only list
-      const catalogItemIndex = catalogData.findIndex(item => item.turnIndex === turnIndex);
-
-      if (catalogItemIndex >= 0 && catalogItemIndex < userTurns.length) {
-        const targetTurn = userTurns[catalogItemIndex];
-
-        // Scroll to the target element with smooth behavior
-        targetTurn.element.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-          inline: 'nearest'
-        });
-
-        // Add visual highlight to indicate the navigated-to element
-        highlightElement(targetTurn.element);
-      } else {
-        console.warn('Could not map catalog item to DOM element. Catalog index:', catalogItemIndex, 'Available user turns:', userTurns.length);
-      }
-
-    } catch (error) {
-      console.error('Error during navigation:', error);
-    }
-  }
-
-  /**
-   * Highlight an element temporarily to indicate navigation
-   * @param {HTMLElement} element - Element to highlight
-   */
-  function highlightElement(element) {
-    // Store original styles
-    const originalBackground = element.style.backgroundColor;
-    const originalTransition = element.style.transition;
-
-    // Apply highlight
-    element.style.transition = 'background-color 0.3s ease';
-    element.style.backgroundColor = 'rgba(66, 133, 244, 0.1)'; // Light blue highlight
-
-    // Remove highlight after delay
-    setTimeout(() => {
-      element.style.backgroundColor = originalBackground;
-
-      // Remove transition after background returns to normal
-      setTimeout(() => {
-        element.style.transition = originalTransition;
-      }, CONSTANTS.HIGHLIGHT_FADE_OUT_MS);
-    }, CONSTANTS.HIGHLIGHT_DURATION_MS);
-  }
-
-  /**
-   * Navigate to the bottom of the conversation
-   */
-  function scrollToBottom() {
-    try {
-      // The chunkEditor is usually fixed at the bottom, so scrolling it into view doesn't scroll the conversation.
-      // Instead, we find the last chat turn and scroll to it.
-      const chatTurns = document.querySelectorAll(SELECTORS.query.chatTurn);
-      if (chatTurns.length > 0) {
-        const lastTurn = chatTurns[chatTurns.length - 1];
-        lastTurn.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
-      }
-    } catch (error) {
-      console.error('Error scrolling to bottom:', error);
-    }
-  }
-
-  /**
-   * Get the main chat content container that resizes when sidebars toggle
-   */
-  function getChatMainContainer() {
-    const firstTurn = document.querySelector(SELECTORS.query.chatTurn);
-    if (firstTurn && firstTurn.parentElement) {
-      return firstTurn.parentElement;
-    }
-    const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
-    if (chunkEditor) {
-      const mainContent = Array.from(chunkEditor.children).find(
-        child => child.id !== SELECTORS.id.catalogPanel && child.tagName !== 'STYLE' && !child.classList.contains('custom-tooltip-text')
-      );
-      if (mainContent) return mainContent;
-      return chunkEditor;
-    }
-    return null;
-  }
-
-  /**
-   * Update the position of the scroll to bottom button to keep it centered
-   */
-  function updateScrollButtonPosition() {
-    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
-    if (!btn) return;
-    const target = getChatMainContainer();
-    if (target) {
-      const rect = target.getBoundingClientRect();
-      btn.style.left = (rect.left + rect.width / 2) + 'px';
-    }
-  }
-
-  // Detect when AI Studio sidebar overlay backdrop is present (narrow screen mode)
-  function isOverlayActive() {
-    // AI Studio uses .sidebar-overlay for its backdrop (z-index: 4) in narrow screen mode.
-    // In wide screen mode, the sidebar-overlay may be present in DOM but has display: none.
-    // We check if it is active by checking display and visibility, but ignore opacity
-    // so it doesn't flicker during the fade-in transition (where opacity starts at 0).
-    const overlay = document.querySelector('.sidebar-overlay');
-    if (overlay) {
-      const style = window.getComputedStyle(overlay);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    }
-    return false;
-  }
-
-  function updateScrollBtnOverlayVisibility() {
-    const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
-    if (!btn) return;
-    if (isOverlayActive()) {
-      btn.style.display = 'none';
-    } else {
-      btn.style.display = '';
-    }
-  }
-
-  /**
-   * PART 3.7: 目录切换功能
-   */
-
-  /**
-   * Create catalog panel DOM element, mimicking the native side panel structure.
-   * @returns {HTMLElement} The catalog panel element.
-   */
-  function createCatalogPanel() {
-    // Create the main container with the same tag as the native one
-    const panel = document.createElement('ms-right-side-panel');
-    panel.id = SELECTORS.id.catalogPanel;
-
-    // Create the inner content container that handles the slide-in animation
-    const contentContainer = document.createElement('div');
-    contentContainer.className = 'content-container';
-
-    // Create the panel header
-    const header = document.createElement('div');
-    header.className = SELECTORS.class.nativePanelHeader;
-
-    const title = document.createElement('h2');
-    title.className = SELECTORS.class.nativePanelTitle;
-    title.textContent = chrome.i18n.getMessage('catalogHeader');
-
-    // Create the close button, replicating the native structure
-    const closeButton = document.createElement('button');
-    closeButton.setAttribute('ms-button', '');
-    closeButton.setAttribute('variant', 'icon-borderless');
-    closeButton.setAttribute('size', 'small');
-    closeButton.setAttribute('iconname', 'close');
-    closeButton.setAttribute('aria-label', 'Close catalog panel');
-    closeButton.addEventListener('click', () => toggleCatalog(false));
-
-    const closeIcon = document.createElement('span');
-    closeIcon.className = SELECTORS.class.nativeMaterialIcon;
-    closeIcon.textContent = 'close';
-    closeIcon.setAttribute('aria-hidden', 'true');
-
-    closeButton.appendChild(closeIcon);
-
-    // Assemble the header
-    header.appendChild(title);
-    header.appendChild(closeButton);
-
-    // Create the scrollable content area
-    const settingsWrapper = document.createElement('div');
-    settingsWrapper.className = SELECTORS.class.nativeSettingsWrapper;
-    settingsWrapper.setAttribute('msscrollableindicatorcontainer', '');
-
-    const scrollableArea = document.createElement('div');
-    scrollableArea.className = SELECTORS.class.nativeScrollableArea;
-    scrollableArea.id = SELECTORS.id.catalogListContainer;
-    scrollableArea.setAttribute('msscrollable', '');
-
-    // Assemble the panel
-    settingsWrapper.appendChild(scrollableArea);
-    contentContainer.appendChild(header);
-    contentContainer.appendChild(settingsWrapper);
-    panel.appendChild(contentContainer);
-
-    return panel;
-  }
-
-  /**
-   * Create prompt list item element
-   * @param {Object} catalogItem - Catalog item data
-   * @returns {HTMLElement} The list item element
-   */
-  function createPromptListItem(catalogItem) {
-    const listItem = document.createElement('div');
-    listItem.className = 'catalog-list-item';
-    listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
-    listItem.setAttribute('role', 'button');
-    listItem.setAttribute('tabindex', '0');
-
-    // Create prompt text element
-    const promptText = document.createElement('span');
-    promptText.className = 'catalog-prompt-text';
-
-    // Display appropriate content based on content type
-    if (catalogItem.contentType === 'text') {
-      promptText.textContent = catalogItem.truncatedText;
-    } else {
-      // For non-text prompts ('image', 'file'), use the full text (e.g., '[Image]')
-      // and apply special styling.
-      promptText.textContent = catalogItem.promptText;
-      promptText.classList.add('catalog-image-prompt');
-    }
-
-    listItem.appendChild(promptText);
-
-    // Add click event handler for navigation
-    listItem.addEventListener('click', function () {
-      // Remove selected class from all other items
-      const allItems = document.querySelectorAll('.catalog-list-item');
-      allItems.forEach(item => item.classList.remove('catalog-item-selected'));
-
-      // Add selected class to the clicked item
-      listItem.classList.add('catalog-item-selected');
-
-      navigateToPrompt(catalogItem.turnIndex);
-      // Optional: close panel after navigation
-      // toggleCatalog(false); 
-    });
-
-    // Add keyboard support
-    listItem.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        listItem.click();
-      }
-    });
-
-    return listItem;
-  }
-
-  /**
-   * Render prompt list in the catalog panel
-   */
-  function renderPromptList() {
-    const listContainer = document.getElementById(SELECTORS.id.catalogListContainer);
-    if (!listContainer) {
-      return;
-    }
-    listContainer.innerHTML = '';
-
-    if (!catalogData || catalogData.length === 0) {
-      const emptyState = document.createElement('div');
-      emptyState.className = 'catalog-empty-state';
-      emptyState.textContent = chrome.i18n.getMessage('catalogEmptyState');
-      listContainer.appendChild(emptyState);
-      return;
-    }
-
-    catalogData.forEach((catalogItem) => {
-      const listItem = createPromptListItem(catalogItem);
-      listContainer.appendChild(listItem);
-    });
-  }
-
-  /**
-   * Toggle catalog panel visibility and handle native panel exclusivity.
-   * @param {boolean} [forceShow] - Force a specific state. Toggles if undefined.
-   */
-  function toggleCatalog(forceShow) {
-    const catalogPanel = document.getElementById(SELECTORS.id.catalogPanel);
-    const catalogButton = document.getElementById(SELECTORS.id.catalogButton);
-    if (!catalogPanel || !catalogButton) return;
-
-    const isVisible = catalogPanel.classList.contains(SELECTORS.classExt.panelVisible);
-    const shouldShow = forceShow !== undefined ? forceShow : !isVisible;
-
-    if (shouldShow === isVisible) return; // No change needed
-
-    if (shouldShow) {
-      renderPromptList();
-    }
-
-    catalogPanel.classList.toggle(SELECTORS.classExt.panelVisible, shouldShow);
-    catalogButton.classList.toggle(SELECTORS.classExt.buttonHidden, shouldShow);
-    catalogVisible = shouldShow;
-  }
-
-  let currentTooltip = null; // To hold the currently visible tooltip element
-
-  /**
-   * Creates and displays a tooltip, positioning it relative to a target element.
-   * The tooltip is appended to the document body to avoid stacking context issues.
-   * @param {HTMLElement} targetElement - The element to which the tooltip is anchored.
-   * @param {string} text - The text content of the tooltip.
-   */
-  function showTooltip(targetElement, text) {
-    // Remove any existing tooltip
-    if (currentTooltip) {
-      currentTooltip.remove();
-    }
-
-    // Create the tooltip element
-    const tooltip = document.createElement('div');
-    tooltip.className = 'custom-tooltip-text';
-    tooltip.textContent = text;
-    
-    // Append to body to ensure it's in the root stacking context
-    document.body.appendChild(tooltip);
-    currentTooltip = tooltip;
-
-    // Calculate position
-    const targetRect = targetElement.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-
-    // Position tooltip centered below the button
-    let top = targetRect.bottom + 8; // 8px gap below
-    let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
-
-    // Adjust if tooltip goes off-screen
-    if (top + tooltipRect.height > window.innerHeight) {
-      top = targetRect.top - tooltipRect.height - 8; // Position above if not enough space below
-    }
-    if (left < 0) {
-      left = 5; // 5px from edge
-    }
-    if (left + tooltipRect.width > window.innerWidth) {
-      left = window.innerWidth - tooltipRect.width - 5;
-    }
-
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
-    tooltip.style.position = 'fixed'; // Ensure positioning is relative to viewport
-
-    // Fade in
-    setTimeout(() => {
-      if(tooltip) tooltip.style.opacity = '1';
-    }, 10); 
-  }
-
-  /**
-   * Hides and removes the currently visible tooltip.
-   */
-  function hideTooltip() {
-    if (currentTooltip) {
-      const tooltipToRemove = currentTooltip;
-      currentTooltip = null;
-      // Fade out
-      tooltipToRemove.style.opacity = '0';
-      // Remove from DOM after transition
-      setTimeout(() => {
-        tooltipToRemove.remove();
-      }, 150); // Must match transition duration in styles.css
-    }
-  }
-
-  /**
-   * Factory function to create a standardized toolbar button.
-   * Encapsulates the repetitive logic of creating a button and its icon.
-   * Tooltip handling is now managed via mouse events to avoid z-index issues.
-   * @param {string} id - The ID for the button element.
-   * @param {string} iconName - The name of the Material Symbol icon.
-   * @param {string} tooltipText - The text to display in the tooltip.
-   * @param {function} onClick - The function to call when the button is clicked.
-   * @returns {HTMLButtonElement} The fully constructed button element.
-   */
-  function createToolbarButton(id, iconName, tooltipText, onClick, variant = 'icon-borderless') {
-    const button = document.createElement('button');
-    button.id = id;
-
-    // Add attributes and classes to mimic native buttons
-    button.setAttribute('ms-button', '');
-    button.setAttribute('variant', variant);
-    button.setAttribute('iconname', iconName);
-    button.classList.add('mat-mdc-tooltip-trigger'); // Common class for tooltips
-
-    // Apply classes based on the variant
-    if (variant === 'icon-primary') {
-      button.classList.add('ms-button-primary', 'ms-button-icon');
-    } else { // Default to icon-borderless
-      button.classList.add('ms-button-borderless', 'ms-button-icon');
-    }
-
-    const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol';
-    icon.textContent = iconName;
-    button.appendChild(icon);
-
-    // --- Tooltip Handling ---
-    button.addEventListener('mouseenter', () => showTooltip(button, tooltipText));
-    button.addEventListener('mouseleave', hideTooltip);
-    button.addEventListener('blur', hideTooltip); // Hide on focus out
-    button.addEventListener('click', hideTooltip); // Hide tooltip on click as well
-
-    button.addEventListener('click', onClick);
-
-    return button;
-  }
-
-  /**
-   * PART 4: UI注入逻辑
+   * PART 3: UI Injection Logic
    */
   function checkAndInjectButton() {
     const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
     const currentUrl = window.location.href;
 
     if (!targetUrlPattern.test(currentUrl)) {
-      document.getElementById(SELECTORS.id.exportButton)?.remove();
-      document.getElementById(SELECTORS.id.catalogButton)?.remove();
-      document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
-      document.getElementById(SELECTORS.id.catalogPanel)?.remove();
+      document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
       return;
     }
 
@@ -942,175 +77,172 @@
       const toolbarRight = document.querySelector('.toolbar-right');
       if (!toolbarRight) return;
 
-      // Check for temporary chat mode (either by active toggle or by persistent indicator)
-      const temporaryChatToggle = document.querySelector(SELECTORS.query.temporaryChatToggle);
+      const temporaryChatToggle = document.querySelector(Utils.SELECTORS.query.temporaryChatToggle);
       const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
-      const isIndicatorPresent = document.querySelector(SELECTORS.query.temporaryChatIndicator);
+      const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
 
       if (isToggleActive || isIndicatorPresent) {
-        // If in temp chat mode, ensure our buttons are removed and do not proceed.
-        document.getElementById(SELECTORS.id.exportButton)?.remove();
-        document.getElementById(SELECTORS.id.catalogButton)?.remove();
-        document.getElementById(SELECTORS.id.scrollToBottomButton)?.remove();
-        document.getElementById(SELECTORS.id.catalogPanel)?.remove(); // Also hide panel
+        document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
+        document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
+        document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
+        document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
         return;
       }
 
       clearInterval(injectionInterval);
 
-      // --- Inject Buttons ---
-      if (!document.getElementById(SELECTORS.id.exportButton)) {
-        const exportButton = createToolbarButton(
-          SELECTORS.id.exportButton, 'markdown_copy', chrome.i18n.getMessage('tooltipCopyMarkdown'), exportToMarkdown, 'icon-borderless'
+      // --- Inject Export Markdown Button ---
+      if (!document.getElementById(Utils.SELECTORS.id.exportButton)) {
+        const exportButton = Utils.createToolbarButton(
+          Utils.SELECTORS.id.exportButton, 
+          'markdown_copy', 
+          chrome.i18n.getMessage('tooltipCopyMarkdown'), 
+          Markdown.exportToMarkdown, 
+          'icon-borderless'
         );
-        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        const moreButton = toolbarRight.querySelector(Utils.SELECTORS.query.moreActionsButton);
         if (moreButton) moreButton.parentElement.insertBefore(exportButton, moreButton);
         else toolbarRight.appendChild(exportButton);
       }
 
-      if (!document.getElementById(SELECTORS.id.catalogButton)) {
-        const catalogButton = createToolbarButton(
-          SELECTORS.id.catalogButton, 'list', chrome.i18n.getMessage('tooltipCatalog'), () => { /* Handled by delegation */ }, 'icon-primary'
+      // --- Inject Catalog Button ---
+      if (!document.getElementById(Utils.SELECTORS.id.catalogButton)) {
+        const catalogButton = Utils.createToolbarButton(
+          Utils.SELECTORS.id.catalogButton, 
+          'list', 
+          chrome.i18n.getMessage('tooltipCatalog'), 
+          () => { /* Handled by delegation */ }, 
+          'icon-primary'
         );
-        const moreButton = toolbarRight.querySelector(SELECTORS.query.moreActionsButton);
+        const moreButton = toolbarRight.querySelector(Utils.SELECTORS.query.moreActionsButton);
         if (moreButton) {
             moreButton.after(catalogButton);
         } else {
-            // Fallback if moreButton is not found
-            const runSettingsButton = toolbarRight.querySelector(SELECTORS.query.runSettingsButton);
+            const runSettingsButton = toolbarRight.querySelector(Utils.SELECTORS.query.runSettingsButton);
             if (runSettingsButton) {
                 runSettingsButton.parentElement.insertBefore(catalogButton, runSettingsButton);
             }
         }
       }
 
-      // --- Event Delegation Listener ---
+      // --- Event Delegation Listener for Toolbar ---
       if (!toolbarRight.dataset.delegatedListener) {
         toolbarRight.dataset.delegatedListener = 'true';
         toolbarRight.addEventListener('click', (e) => {
           const target = e.target;
-
-          // Case 1: User clicked the NATIVE Run Settings button
-          if (target.closest(SELECTORS.query.runSettingsButton)) {
-            if (catalogVisible && e.isTrusted) {
-              // Intercept the click to play the closing animation first
+          
+          if (target.closest(Utils.SELECTORS.query.runSettingsButton)) {
+            if (Catalog.getCatalogVisible() && e.isTrusted) {
               e.preventDefault();
               e.stopPropagation();
-              toggleCatalog(false);
-              
-              // Wait for the animation to finish, then trigger the native panel
+              Catalog.toggleCatalog(false);
               setTimeout(() => {
-                const runSettingsBtn = document.querySelector(SELECTORS.query.runSettingsButton);
-                if (runSettingsBtn) {
-                  runSettingsBtn.click();
-                }
+                const runSettingsBtn = document.querySelector(Utils.SELECTORS.query.runSettingsButton);
+                if (runSettingsBtn) runSettingsBtn.click();
               }, 150);
             }
           }
-          // Case 2: User clicked OUR Catalog button
-          else if (target.closest('#' + SELECTORS.id.catalogButton)) {
-            const sidePanel = document.querySelector(SELECTORS.query.nativeSidePanel);
-            // Check if the side panel exists and is visible (implies the native panel is open)
+          else if (target.closest('#' + Utils.SELECTORS.id.catalogButton)) {
+            const sidePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
             const isNativePanelOpen = sidePanel && sidePanel.getBoundingClientRect().width > 0;
             
             if (isNativePanelOpen) {
-              // Native panel is open, close it first.
-              // Since the native close button might be removed, we toggle the run settings button.
-              const runSettingsBtn = document.querySelector(SELECTORS.query.runSettingsButton);
-              if (runSettingsBtn) {
-                runSettingsBtn.click();
-              }
-              // The native panel closing also has an animation, so we wait.
-              setTimeout(() => toggleCatalog(), 150);
+              const runSettingsBtn = document.querySelector(Utils.SELECTORS.query.runSettingsButton);
+              if (runSettingsBtn) runSettingsBtn.click();
+              setTimeout(() => Catalog.toggleCatalog(), 150);
             } else {
-              toggleCatalog();
+              Catalog.toggleCatalog();
             }
           }
-        }, true); // Use capture phase to intercept before native Angular handlers
+        }, true);
       }
 
       // --- Inject Catalog Panel ---
-      if (!document.getElementById(SELECTORS.id.catalogPanel)) {
-        const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+      if (!document.getElementById(Utils.SELECTORS.id.catalogPanel)) {
+        const chunkEditor = document.querySelector(Utils.SELECTORS.query.chunkEditor);
         if (chunkEditor) {
-          const panel = createCatalogPanel();
+          const panel = Catalog.createCatalogPanel();
           chunkEditor.appendChild(panel);
         }
       }
 
       // --- Inject Floating Scroll Button ---
-      if (!document.getElementById(SELECTORS.id.scrollToBottomButton)) {
-        const chunkEditor = document.querySelector(SELECTORS.query.chunkEditor);
+      if (!document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)) {
+        const chunkEditor = document.querySelector(Utils.SELECTORS.query.chunkEditor);
         if (chunkEditor) {
           const scrollBtn = document.createElement('button');
-          scrollBtn.id = SELECTORS.id.scrollToBottomButton;
-          scrollBtn.className = 'button-hidden mat-mdc-tooltip-trigger'; // Start hidden
+          scrollBtn.id = Utils.SELECTORS.id.scrollToBottomButton;
+          scrollBtn.className = 'button-hidden mat-mdc-tooltip-trigger'; 
           const icon = document.createElement('span');
           icon.className = 'material-symbols-outlined notranslate';
           icon.textContent = 'keyboard_arrow_down';
           scrollBtn.appendChild(icon);
+          
           scrollBtn.addEventListener('click', () => {
-            hideTooltip();
-            scrollToBottom();
+            Utils.hideTooltip();
+            Catalog.scrollToBottom();
             scrollBtn.classList.add('button-hidden');
-            if (scrollStopTimer) {
-              clearTimeout(scrollStopTimer);
+            if (Catalog.getScrollStopTimer()) {
+              clearTimeout(Catalog.getScrollStopTimer());
             }
-            isHoveringScrollButton = false;
+            Catalog.setIsHoveringScrollButton(false);
           });
+          
           scrollBtn.addEventListener('mouseenter', () => {
-            isHoveringScrollButton = true;
-            showTooltip(scrollBtn, chrome.i18n.getMessage('tooltipScrollToBottom'));
-            if (scrollStopTimer) {
-              clearTimeout(scrollStopTimer);
-              scrollStopTimer = null;
+            Catalog.setIsHoveringScrollButton(true);
+            Utils.showTooltip(scrollBtn, chrome.i18n.getMessage('tooltipScrollToBottom'));
+            if (Catalog.getScrollStopTimer()) {
+              clearTimeout(Catalog.getScrollStopTimer());
+              Catalog.setScrollStopTimer(null);
             }
           });
+          
           scrollBtn.addEventListener('mouseleave', () => {
-            isHoveringScrollButton = false;
-            hideTooltip();
+            Catalog.setIsHoveringScrollButton(false);
+            Utils.hideTooltip();
             
-            // Set the auto-hide timer when mouse leaves, unless we are already at the bottom
-            const target = getChatMainContainer();
+            const target = Catalog.getChatMainContainer();
             if (target) {
               const currentScrollTop = target.scrollTop;
               const currentScrollHeight = target.scrollHeight;
               const distanceToBottom = currentScrollHeight - currentScrollTop - target.clientHeight;
               if (distanceToBottom >= 150) {
-                if (scrollStopTimer) {
-                  clearTimeout(scrollStopTimer);
-                }
-                scrollStopTimer = setTimeout(() => {
+                if (Catalog.getScrollStopTimer()) clearTimeout(Catalog.getScrollStopTimer());
+                Catalog.setScrollStopTimer(setTimeout(() => {
                   scrollBtn.classList.add('button-hidden');
-                }, 2500);
+                }, 2500));
               }
             }
           });
+          
           scrollBtn.addEventListener('blur', () => {
-            hideTooltip();
+            Utils.hideTooltip();
           });
           
           document.body.appendChild(scrollBtn);
           
-          // Keep the button centered relative to the chat area using ResizeObserver
-          const targetContainer = getChatMainContainer();
+          const targetContainer = Catalog.getChatMainContainer();
           if (targetContainer) {
             const resizeObserver = new ResizeObserver(() => {
-              updateScrollButtonPosition();
-              updateScrollBtnOverlayVisibility();
+              Catalog.updateScrollButtonPosition();
+              Catalog.updateScrollBtnOverlayVisibility();
             });
             resizeObserver.observe(targetContainer);
           }
-          updateScrollButtonPosition(); // Initial positioning
+          Catalog.updateScrollButtonPosition();
         }
       }
-    }, CONSTANTS.INJECTION_INTERVAL_MS);
+    }, Utils.CONSTANTS.INJECTION_INTERVAL_MS);
   }
 
+  /**
+   * PART 4: Initialization & Global Observers
+   */
   function initialize() {
-    // Initial check
     checkAndInjectButton();
-    setupConversationObserver();
+    Catalog.setupConversationObserver();
+    Catalog.setupWindowListeners();
+    Notification.initObserver();
 
     const lastScrollTops = new WeakMap();
     const lastScrollHeights = new WeakMap();
@@ -1118,26 +250,21 @@
     
     // Global scroll listener for the floating button
     window.addEventListener('scroll', (e) => {
-      const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
+      const btn = document.getElementById(Utils.SELECTORS.id.scrollToBottomButton);
       if (!btn) return;
       
       let container = e.target;
-      
       const isDoc = container === document || container === window || container === document.documentElement || container === document.body;
       
-      // If it's not the main document/window, it must be a container holding chat turns (the chat list)
       if (!isDoc) {
-        const containsChatTurns = typeof container.querySelector === 'function' && container.querySelector(SELECTORS.query.chatTurn) !== null;
-        if (!containsChatTurns) {
-          return; // Ignore scroll events from code blocks, dropdowns, side panels, etc.
-        }
+        const containsChatTurns = typeof container.querySelector === 'function' && container.querySelector(Utils.SELECTORS.query.chatTurn) !== null;
+        if (!containsChatTurns) return;
       }
       
       if (container === document || container.nodeType === Node.DOCUMENT_NODE) {
         container = document.documentElement;
       }
       
-      // Only check significant scrolling containers
       if (container.scrollHeight > container.clientHeight + 20) {
         const currentScrollTop = container.scrollTop;
         const currentScrollHeight = container.scrollHeight;
@@ -1146,42 +273,27 @@
         let lastScrollTop = lastScrollTops.get(container) || 0;
         const lastScrollHeight = lastScrollHeights.get(container) || currentScrollHeight;
         
-        // If scrollHeight changed (e.g. loading older messages at the top), 
-        // adjust lastScrollTop by the height difference to prevent false triggers.
         if (currentScrollHeight !== lastScrollHeight) {
-          const deltaHeight = currentScrollHeight - lastScrollHeight;
-          lastScrollTop += deltaHeight;
+          lastScrollTop += (currentScrollHeight - lastScrollHeight);
         }
         
         lastScrollTops.set(container, currentScrollTop);
         lastScrollHeights.set(container, currentScrollHeight);
         
-        // Ignore scroll events for showing the button if we recently had DOM mutations (like loading history)
-        if (Date.now() < ignoreScrollUntil) {
-          return;
-        }
+        if (Date.now() < ignoreScrollUntil) return;
         
-        // Hide if at the absolute bottom
         if (distanceToBottom < 150) {
-          if (scrollStopTimer) {
-            clearTimeout(scrollStopTimer);
-          }
+          if (Catalog.getScrollStopTimer()) clearTimeout(Catalog.getScrollStopTimer());
           btn.classList.add('button-hidden');
         } else {
-          // Scrolling (any direction) and not at bottom -> show button
-          updateScrollBtnOverlayVisibility();
+          Catalog.updateScrollBtnOverlayVisibility();
           if (btn.style.display !== 'none') {
             btn.classList.remove('button-hidden');
-            
-            // Auto-hide the button after 2.5 seconds of inactivity (no scrolling),
-            // but ONLY if the mouse is not currently hovering over it.
-            if (scrollStopTimer) {
-              clearTimeout(scrollStopTimer);
-            }
-            if (!isHoveringScrollButton) {
-              scrollStopTimer = setTimeout(() => {
+            if (Catalog.getScrollStopTimer()) clearTimeout(Catalog.getScrollStopTimer());
+            if (!Catalog.getIsHoveringScrollButton()) {
+              Catalog.setScrollStopTimer(setTimeout(() => {
                 btn.classList.add('button-hidden');
-              }, 2500);
+              }, 2500));
             }
           }
         }
@@ -1189,72 +301,16 @@
     }, true);
 
     let lastUrl = window.location.href;
-    
-    // --- Generation State Tracking ---
-    let isGenerating = false;
-    let enableNotifications = true;
-    
-    // Load initial settings
-    chrome.storage.local.get(['enableNotifications'], (result) => {
-      enableNotifications = result.enableNotifications !== false;
-    });
-
-    // Listen for settings change
-    chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === 'local' && changes.enableNotifications) {
-        enableNotifications = changes.enableNotifications.newValue;
-      }
-    });
-
-    function checkGenerationState() {
-      if (!enableNotifications) return;
-
-      // Find the specific AI Studio 'Stop' button during generation
-      // According to DOM structure: button.ms-button-primary containing <span ...>Stop</span>
-      const buttons = Array.from(document.querySelectorAll('button.ms-button-primary'));
-      const stopBtn = buttons.find(btn => 
-        btn.textContent.includes('Stop') && 
-        (btn.querySelector('.spin') || btn.textContent.includes('progress_activity'))
-      );
-
-      if (stopBtn && !isGenerating) {
-        // AI started generating
-        isGenerating = true;
-      } else if (!stopBtn && isGenerating) {
-        // AI finished generating
-        isGenerating = false;
-        
-        // Trigger desktop notification ONLY if the user is not actively viewing the tab
-        // document.hidden covers tab switches/minimize. !document.hasFocus() covers virtual desktops and side-by-side app switching.
-        if (document.hidden || !document.hasFocus()) {
-          try {
-            const fallbackTitle = document.title ? document.title.replace(' - Google AI Studio', '') : '';
-            const finalTitle = (typeof promptTitle !== 'undefined' && promptTitle !== chrome.i18n.getMessage('promptTitleDefault')) ? promptTitle : fallbackTitle;
-            
-            chrome.runtime.sendMessage({ 
-              type: 'GENERATION_COMPLETE',
-              chatTitle: finalTitle
-            });
-          } catch(e) {
-            console.error('Failed to send notification message:', e);
-          }
-        }
-      }
-    }
-
     let debounceTimer;
 
     const observer = new MutationObserver((mutations) => {
       const currentUrl = window.location.href;
-      
-      // Always re-run checks if URL changes
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         checkAndInjectButton();
         return;
       }
 
-      // Check if new elements (like history messages) were added
       let hasAddedNodes = false;
       for (const mutation of mutations) {
         if (mutation.addedNodes && mutation.addedNodes.length > 0) {
@@ -1263,44 +319,38 @@
         }
       }
       if (hasAddedNodes) {
-        ignoreScrollUntil = Date.now() + 300; // Ignore scroll events for 300ms
+        ignoreScrollUntil = Date.now() + 300;
       }
 
-      // Check if overlay/backdrop state changed
-      updateScrollBtnOverlayVisibility();
+      Catalog.updateScrollBtnOverlayVisibility();
 
-      // For all other DOM changes, use a debounce to prevent excessive checks
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         checkAndInjectButton();
-        checkGenerationState(); // Check if generation finished
-      }, 150); // Debounce to handle rapid DOM updates
+        Notification.checkGenerationState(); 
+      }, 150);
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true // IMPORTANT: This is the key fix to detect class/attribute changes
+      attributes: true
     });
 
-    // Listen for mousedown on the Tune settings button to hide the scroll button instantly.
-    // mousedown fires significantly faster than click (which waits for mouseup).
-    // In wide screens (no overlay), the subsequent DOM mutation observer will instantly restore it.
-    // In narrow screens (with overlay), it stays hidden immediately.
     document.addEventListener('mousedown', (e) => {
-      const settingsBtn = e.target.closest(SELECTORS.query.runSettingsButton);
+      const settingsBtn = e.target.closest(Utils.SELECTORS.query.runSettingsButton);
       if (settingsBtn) {
-        const btn = document.getElementById(SELECTORS.id.scrollToBottomButton);
-        if (btn) {
-          btn.style.display = 'none';
-        }
+        const btn = document.getElementById(Utils.SELECTORS.id.scrollToBottomButton);
+        if (btn) btn.style.display = 'none';
       }
     }, true);
   }
 
+  // Boot up
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initialize);
   } else {
     initialize();
   }
-})();
+
+})(window);
