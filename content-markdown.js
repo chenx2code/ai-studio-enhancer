@@ -6,6 +6,7 @@
     const conversationHistory = global.__AIStudioEnhancer__.State.getHistory();
     const promptTitle = global.__AIStudioEnhancer__.State.getTitle();
     const getFriendlyFileType = global.__AIStudioEnhancer__.Utils.getFriendlyFileType;
+    const getAttachmentPlaceholder = global.__AIStudioEnhancer__.Utils.getAttachmentPlaceholder;
 
     if (!conversationHistory) {
       alert(chrome.i18n.getMessage('errorNoDataSource'));
@@ -56,25 +57,13 @@
         
         if (role === 'user') {
           const textContent = turn[0] || '';
-          const imageContent = turn[1];
-          const youtubeContent = turn[13];
-          const docContent = turn[23];
-          
           let placeholder = '';
           
-          if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-            placeholder = '> [Image]\n\n';
-          } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-            placeholder = '> [YouTube Video]\n\n';
-          } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-            const friendlyType = getFriendlyFileType(docContent[0]);
-            if (friendlyType === 'Document') {
-              placeholder = '> [Document]\n\n';
-            } else {
-              placeholder = `> [${friendlyType} File]\n\n`;
-            }
+          const attachment = getAttachmentPlaceholder(turn);
+          if (attachment) {
+            placeholder = `> ${attachment.text}\n\n`;
           } else if (!textContent) {
-            placeholder = '> [Attachment]\n\n';
+            placeholder = '> [File]\n\n';
           }
 
           if (textContent) {

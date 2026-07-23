@@ -76,6 +76,34 @@
     return 'Document';
   }
 
+  function getAttachmentPlaceholder(turn) {
+    if (!turn || !Array.isArray(turn)) return null;
+    
+    const imageContent = turn[1];
+    const inlineContent = turn[12];
+    const youtubeContent = turn[13];
+    const docContent = turn[23];
+
+    if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
+      return { text: '[Image]', type: 'image' };
+    }
+    if (inlineContent && Array.isArray(inlineContent) && inlineContent.length > 0 && typeof inlineContent[0] === 'string' && inlineContent[0].startsWith('image/')) {
+      return { text: '[Image]', type: 'image' };
+    }
+    if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
+      return { text: '[YouTube Video]', type: 'video' };
+    }
+    if (docContent && Array.isArray(docContent) && docContent.length > 0) {
+      const friendlyType = getFriendlyFileType(docContent[0]);
+      return { 
+        text: friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`, 
+        type: friendlyType.toLowerCase() 
+      };
+    }
+    
+    return null;
+  }
+
   function truncateText(text, maxLength = 50) {
     if (!text || typeof text !== 'string') return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
@@ -161,6 +189,7 @@
     SELECTORS,
     CONSTANTS,
     getFriendlyFileType,
+    getAttachmentPlaceholder,
     truncateText,
     showTooltip,
     hideTooltip,

@@ -19,29 +19,21 @@
       const role = turn[8];
       if (role === 'user') {
         const textContent = turn[0] || '';
-        const imageContent = turn[1];
-        const youtubeContent = turn[13];
-        const docContent = turn[23];
-
         let promptText = '';
         let contentType = 'text';
 
         if (textContent && textContent.trim()) {
           promptText = textContent.trim();
           contentType = 'text';
-        } else if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
-          promptText = '[Image]';
-          contentType = 'image';
-        } else if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-          promptText = '[YouTube Video]';
-          contentType = 'video';
-        } else if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-          const friendlyType = Utils.getFriendlyFileType(docContent[0]);
-          promptText = friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`;
-          contentType = friendlyType.toLowerCase();
         } else {
-          promptText = '[File]';
-          contentType = 'file';
+          const attachment = Utils.getAttachmentPlaceholder(turn);
+          if (attachment) {
+            promptText = attachment.text;
+            contentType = attachment.type;
+          } else {
+            promptText = '[File]';
+            contentType = 'file';
+          }
         }
 
         let turnElementId = null;
