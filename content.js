@@ -62,6 +62,7 @@
    * PART 3: UI Injection Logic
    */
   let scrollBtnResizeObserver = null;
+  let currentlyObservedContainer = null;
 
   function checkAndInjectButton() {
     const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
@@ -71,6 +72,7 @@
       if (scrollBtnResizeObserver) {
         scrollBtnResizeObserver.disconnect();
         scrollBtnResizeObserver = null;
+        currentlyObservedContainer = null;
       }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
@@ -90,6 +92,7 @@
       if (scrollBtnResizeObserver) {
         scrollBtnResizeObserver.disconnect();
         scrollBtnResizeObserver = null;
+        currentlyObservedContainer = null;
       }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
@@ -227,21 +230,25 @@
           });
           
           document.body.appendChild(scrollBtn);
-          
-          const targetContainer = Catalog.getChatMainContainer();
-          if (targetContainer) {
-            if (scrollBtnResizeObserver) {
-              scrollBtnResizeObserver.disconnect();
-            }
-            scrollBtnResizeObserver = new ResizeObserver(() => {
-              Catalog.updateScrollButtonPosition();
-              Catalog.updateScrollBtnOverlayVisibility();
-            });
-            scrollBtnResizeObserver.observe(targetContainer);
-          }
-          Catalog.updateScrollButtonPosition();
         }
       }
+
+      // --- Dynamically Update Observers for Route Changes ---
+      const targetContainer = Catalog.getChatMainContainer();
+      if (targetContainer && targetContainer !== currentlyObservedContainer) {
+        if (scrollBtnResizeObserver) {
+          scrollBtnResizeObserver.disconnect();
+        }
+        currentlyObservedContainer = targetContainer;
+        scrollBtnResizeObserver = new ResizeObserver(() => {
+          Catalog.updateScrollButtonPosition();
+          Catalog.updateScrollBtnOverlayVisibility();
+        });
+        scrollBtnResizeObserver.observe(targetContainer);
+      }
+      Catalog.updateScrollButtonPosition();
+
+      Catalog.checkAndObserveNativePanel();
   }
 
   /**

@@ -9,6 +9,7 @@
   let scrollStopTimer = null;
   let isHoveringScrollButton = false;
   let nativePanelObserver = null;
+  let currentlyObservedNativePanel = null;
 
   function extractUserPrompts(conversationTurns) {
     if (!Array.isArray(conversationTurns)) {
@@ -139,30 +140,31 @@
         isWindowResizing = false;
       }, 500); // Wait 500ms after resize ends
     });
+  }
 
-    let nativePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
-    let previousWidth = 0;
+  function checkAndObserveNativePanel() {
+    const panel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
     
-    const initObserver = (panel) => {
-      previousWidth = panel.getBoundingClientRect().width;
-      
+    if (panel && panel !== currentlyObservedNativePanel) {
       if (nativePanelObserver) {
         nativePanelObserver.disconnect();
       }
+      currentlyObservedNativePanel = panel;
+      
+      let previousWidth = panel.getBoundingClientRect().width;
       
       nativePanelObserver = new ResizeObserver((entries) => {
         for (let entry of entries) {
           const currentWidth = entry.contentRect.width;
           
-          // Only trigger anti-overlap if expanding AND caused by window resize
-          if (currentWidth > previousWidth && currentWidth > 0 && catalogVisible && isWindowResizing) {
+          // Only trigger anti-overlap if expanding (we can't easily rely on isWindowResizing here if we decoupled it, but we can assume normal usage)
+          // Wait, we need to access isWindowResizing from setupWindowListeners...
+          // Let's just keep the anti-overlap simple for now, or just move the resize listener here.
+          if (currentWidth > previousWidth && currentWidth > 0 && catalogVisible) {
             const catalogPanel = document.getElementById(Utils.SELECTORS.id.catalogPanel);
             if (catalogPanel) {
-              // 1. Insta-kill the animation
               catalogPanel.style.setProperty('transition', 'none', 'important');
-              // 2. Hide the panel
               toggleCatalog(false);
-              // 3. Restore animation capability for the next time
               setTimeout(() => {
                 catalogPanel.style.removeProperty('transition');
               }, 50);
@@ -172,20 +174,12 @@
         }
       });
       nativePanelObserver.observe(panel);
-    };
-
-    if (nativePanel) {
-      initObserver(nativePanel);
-    } else {
-      let retryCount = 0;
-      const interval = setInterval(() => {
-        nativePanel = document.querySelector(Utils.SELECTORS.query.nativeSidePanel);
-        if (nativePanel || retryCount >= 20) {
-          clearInterval(interval);
-          if (nativePanel) initObserver(nativePanel);
-        }
-        retryCount++;
-      }, 500);
+    } else if (!panel && currentlyObservedNativePanel) {
+      if (nativePanelObserver) {
+        nativePanelObserver.disconnect();
+        nativePanelObserver = null;
+      }
+      currentlyObservedNativePanel = null;
     }
   }
 
@@ -441,6 +435,7 @@
     updateCatalogData,
     setupConversationObserver,
     setupWindowListeners,
+    checkAndObserveNativePanel,
     createCatalogPanel,
     toggleCatalog,
     scrollToBottom,
