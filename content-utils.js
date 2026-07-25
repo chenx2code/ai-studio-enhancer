@@ -80,25 +80,33 @@
     if (!turn || !Array.isArray(turn)) return null;
     
     const imageContent = turn[1];
+    const cloudFileContent = turn[3]; // Large cloud drive files
     const inlineContent = turn[12];
     const youtubeContent = turn[13];
-    const docContent = turn[23];
+    const docContent = turn[23]; // Normal files
 
     if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
       return { text: '[Image]', type: 'image' };
     }
+    
     if (inlineContent && Array.isArray(inlineContent) && inlineContent.length > 0 && typeof inlineContent[0] === 'string' && inlineContent[0].startsWith('image/')) {
       return { text: '[Image]', type: 'image' };
     }
+    
     if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
       return { text: '[YouTube Video]', type: 'video' };
     }
+    
     if (docContent && Array.isArray(docContent) && docContent.length > 0) {
       const friendlyType = getFriendlyFileType(docContent[0]);
       return { 
         text: friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`, 
         type: friendlyType.toLowerCase() 
       };
+    }
+    
+    if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0 && typeof cloudFileContent[0] === 'string') {
+      return { text: '[PDF File]', type: 'pdf' };
     }
     
     return null;
