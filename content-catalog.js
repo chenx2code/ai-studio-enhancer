@@ -8,12 +8,22 @@
   let catalogVisible = false;
   let scrollStopTimer = null;
   let isHoveringScrollButton = false;
+  let nativePanelObserver = null;
 
   function extractUserPrompts(conversationTurns) {
     if (!Array.isArray(conversationTurns)) {
       return [];
     }
     const userPrompts = [];
+    const userTurnElementIds = [];
+    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
+    for (const chatTurn of chatTurns) {
+      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
+        userTurnElementIds.push(chatTurn.id);
+      }
+    }
+
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
@@ -36,19 +46,7 @@
           }
         }
 
-        let turnElementId = null;
-        const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-        let userTurnCount = 0;
-        for (const chatTurn of chatTurns) {
-          const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-          if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-            if (userTurnCount === userPrompts.length) {
-              turnElementId = chatTurn.id;
-              break;
-            }
-            userTurnCount++;
-          }
-        }
+        let turnElementId = userTurnElementIds[userPrompts.length] || null;
 
         userPrompts.push({
           turnIndex: index,
@@ -148,7 +146,11 @@
     const initObserver = (panel) => {
       previousWidth = panel.getBoundingClientRect().width;
       
-      const resizeObserver = new ResizeObserver((entries) => {
+      if (nativePanelObserver) {
+        nativePanelObserver.disconnect();
+      }
+      
+      nativePanelObserver = new ResizeObserver((entries) => {
         for (let entry of entries) {
           const currentWidth = entry.contentRect.width;
           
@@ -169,7 +171,7 @@
           previousWidth = currentWidth;
         }
       });
-      resizeObserver.observe(panel);
+      nativePanelObserver.observe(panel);
     };
 
     if (nativePanel) {
@@ -266,8 +268,7 @@
   function isOverlayActive() {
     const overlay = document.querySelector('.sidebar-overlay');
     if (overlay) {
-      const style = window.getComputedStyle(overlay);
-      return style.display !== 'none' && style.visibility !== 'hidden';
+      return overlay.offsetWidth > 0 && overlay.offsetHeight > 0 && overlay.style.visibility !== 'hidden';
     }
     return false;
   }

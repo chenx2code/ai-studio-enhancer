@@ -61,11 +61,17 @@
   /**
    * PART 3: UI Injection Logic
    */
+  let scrollBtnResizeObserver = null;
+
   function checkAndInjectButton() {
     const targetUrlPattern = /^https:\/\/aistudio\.google\.com\/prompts\/.+$/;
     const currentUrl = window.location.href;
 
     if (!targetUrlPattern.test(currentUrl)) {
+      if (scrollBtnResizeObserver) {
+        scrollBtnResizeObserver.disconnect();
+        scrollBtnResizeObserver = null;
+      }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
@@ -81,6 +87,10 @@
     const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
 
     if (isToggleActive || isIndicatorPresent) {
+      if (scrollBtnResizeObserver) {
+        scrollBtnResizeObserver.disconnect();
+        scrollBtnResizeObserver = null;
+      }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
@@ -220,11 +230,14 @@
           
           const targetContainer = Catalog.getChatMainContainer();
           if (targetContainer) {
-            const resizeObserver = new ResizeObserver(() => {
+            if (scrollBtnResizeObserver) {
+              scrollBtnResizeObserver.disconnect();
+            }
+            scrollBtnResizeObserver = new ResizeObserver(() => {
               Catalog.updateScrollButtonPosition();
               Catalog.updateScrollBtnOverlayVisibility();
             });
-            resizeObserver.observe(targetContainer);
+            scrollBtnResizeObserver.observe(targetContainer);
           }
           Catalog.updateScrollButtonPosition();
         }
@@ -325,10 +338,9 @@
         ignoreScrollUntil = Date.now() + 300;
       }
 
-      Catalog.updateScrollBtnOverlayVisibility();
-
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        Catalog.updateScrollBtnOverlayVisibility();
         checkAndInjectButton();
         Notification.checkGenerationState(); 
       }, 150);
