@@ -6,6 +6,20 @@
 
   let isGenerating = false;
   let enableNotifications = true;
+  let lastActivityTime = Date.now();
+  let lastUpdateTime = 0;
+  const ACTIVITY_TIMEOUT = 5000; // 5 seconds
+
+  function updateActivity() {
+    const now = Date.now();
+    // Performance optimization: Throttle. Limit high-frequency events (like mousemove)
+    // to update the timestamp at most once every 1 second (1000ms).
+    // This minimizes CPU overhead and prevents performance issues completely.
+    if (now - lastUpdateTime > 1000) {
+      lastActivityTime = now;
+      lastUpdateTime = now;
+    }
+  }
 
   function initObserver() {
     chrome.storage.local.get(['enableNotifications'], (result) => {
@@ -17,6 +31,14 @@
         enableNotifications = changes.enableNotifications.newValue;
       }
     });
+
+    // Listen for user interactions to determine if they are actively using the page
+    // even if the window doesn't have system focus (e.g., scrolling a background window).
+    const options = { passive: true, capture: true };
+    window.addEventListener('wheel', updateActivity, options);
+    window.addEventListener('mousemove', updateActivity, options);
+    window.addEventListener('keydown', updateActivity, options);
+    window.addEventListener('touchstart', updateActivity, options);
   }
 
   function checkGenerationState() {
@@ -33,7 +55,14 @@
     } else if (!stopBtn && isGenerating) {
       isGenerating = false;
       
-      if (document.hidden || !document.hasFocus()) {
+      const isRecentlyActive = (Date.now() - lastActivityTime) < ACTIVITY_TIMEOUT;
+      
+      // We consider the user is NOT looking at the window if:
+      // 1. The tab is hidden (e.g. switched tabs or minimized) OR
+      // 2. The window doesn't have focus AND they haven't interacted with it recently (e.g. background scrolling)
+      const shouldNotify = document.hidden || (!document.hasFocus() && !isRecentlyActive);
+
+      if (shouldNotify) {
         try {
           const fallbackTitle = document.title ? document.title.replace(' - Google AI Studio', '') : '';
           const promptTitle = State.getTitle();
