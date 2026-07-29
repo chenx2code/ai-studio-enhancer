@@ -39,7 +39,42 @@
         if (xhr.readyState === 4) {
           try {
             const data = JSON.parse(xhr.responseText);
-            window.postMessage({ type: 'FROM_INTERCEPTOR', payload: data, apiKeyword: matchedKeyword }, '*');
+            let turns = null;
+            let promptData = null;
+
+            if (matchedKeyword === 'ResolveDriveResource') {
+              turns = data?.[0]?.[13]?.[0];
+              promptData = data?.[0]?.[4];
+            } else if (matchedKeyword === 'UpdatePrompt' || matchedKeyword === 'CreatePrompt') {
+              turns = data?.[13]?.[0];
+              promptData = data?.[4];
+            }
+
+            // Clean up heavy data from turns to prevent memory bloat (OOM)
+            if (turns && Array.isArray(turns)) {
+               turns.forEach(turn => {
+                  if (!Array.isArray(turn)) return;
+                  // turn[1] is imageContent
+                  if (turn[1] && Array.isArray(turn[1])) {
+                     turn[1] = turn[1].length > 0 ? ['[OMITTED_IMAGE]'] : [];
+                  }
+                  // turn[3] is cloudFileContent
+                  if (turn[3] && Array.isArray(turn[3])) {
+                     turn[3] = turn[3].length > 0 ? ['[OMITTED_CLOUD_FILE]'] : [];
+                  }
+                  // turn[12] is inlineContent
+                  if (turn[12] && Array.isArray(turn[12])) {
+                     turn[12] = turn[12].length > 0 ? ['image/[OMITTED]'] : [];
+                  }
+                  // turn[23] is docContent
+                  if (turn[23] && Array.isArray(turn[23])) {
+                     // Keep the mimetype for getFriendlyFileType, discard the actual content
+                     turn[23] = turn[23].length > 0 ? [turn[23][0]] : [];
+                  }
+               });
+            }
+
+            window.postMessage({ type: 'FROM_INTERCEPTOR', payload: { turns, promptData }, apiKeyword: matchedKeyword }, '*');
           } catch (e) {
             console.error('Error parsing XHR response to JSON:', e);
           }
