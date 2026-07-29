@@ -1,46 +1,54 @@
 (function() {
   'use strict';
 
-  // 定义目标API的核心关键词
+  // Define core keywords for target APIs
   const TARGET_KEYWORDS = [
     'CreatePrompt',
     'ResolveDriveResource',
     'UpdatePrompt'
   ];
 
-
-  // 检查一个URL是否包含任何一个目标关键词
+  // Check if a URL contains any of the target keywords
   function getTargetKeyword(url) {
     if (!url) return null;
-    return TARGET_KEYWORDS.find(keyword => url.includes(keyword));
+    // Ensure URL is a string
+    const urlStr = typeof url === 'string' ? url : url.toString();
+    return TARGET_KEYWORDS.find(keyword => urlStr.includes(keyword));
   }
 
-  // --- 拦截 XMLHttpRequest ---
+  // --- Intercept XMLHttpRequest ---
   const originalXhrOpen = window.XMLHttpRequest.prototype.open;
   const originalXhrSend = window.XMLHttpRequest.prototype.send;
 
   window.XMLHttpRequest.prototype.open = function(...args) {
-    this._url = args[1];
+    // Ensure _url is a string even if a URL object is passed
+    this._url = typeof args[1] === 'string' ? args[1] : (args[1] ? args[1].toString() : '');
     return originalXhrOpen.apply(this, args);
   };
 
   window.XMLHttpRequest.prototype.send = function(...args) {
-    const xhr = this;
+    const matchedKeyword = getTargetKeyword(this._url);
     
-    function onLoad() {
-      xhr.removeEventListener('load', onLoad);
-      const matchedKeyword = getTargetKeyword(xhr._url);
-      if (xhr.readyState === 4 && matchedKeyword) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          window.postMessage({ type: 'FROM_INTERCEPTOR', payload: data, apiKeyword: matchedKeyword }, '*');
-        } catch (e) {
-          console.error('解析 XHR 响应为JSON时出错:', e);
+    // Only attach listener if this is a target API request
+    if (matchedKeyword) {
+      const xhr = this;
+      
+      // Use loadend so it always fires (success, error, or abort)
+      function onLoadEnd() {
+        xhr.removeEventListener('loadend', onLoadEnd);
+        if (xhr.readyState === 4) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            window.postMessage({ type: 'FROM_INTERCEPTOR', payload: data, apiKeyword: matchedKeyword }, '*');
+          } catch (e) {
+            console.error('Error parsing XHR response to JSON:', e);
+          }
         }
       }
+      
+      this.addEventListener('loadend', onLoadEnd);
     }
     
-    this.addEventListener('load', onLoad);
     return originalXhrSend.apply(this, args);
   };
 

@@ -91,7 +91,7 @@
           if (isThoughtTurn) {
             if (includeThoughts) {
               // Wrap the thought process in markdown blockquotes
-              markdownOutput += '> **[Thought Process / 思考过程]**\n>\n';
+              markdownOutput += '> **[Thought Process]**\n>\n';
               markdownOutput += finalContent.split('\n').map(line => '> ' + line).join('\n');
               markdownOutput += '\n\n';
             }
