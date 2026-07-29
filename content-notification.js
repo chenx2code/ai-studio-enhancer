@@ -44,11 +44,16 @@
   function checkGenerationState() {
     if (!enableNotifications) return;
 
-    const buttons = Array.from(document.querySelectorAll('button.ms-button-primary'));
-    const stopBtn = buttons.find(btn => 
-      btn.textContent.includes('Stop') && 
-      (btn.querySelector('.spin') || btn.textContent.includes('progress_activity'))
-    );
+    const buttons = document.querySelectorAll('button.ms-button-primary');
+    let stopBtn = null;
+    for (let i = 0; i < buttons.length; i++) {
+      const btn = buttons[i];
+      if (btn.textContent.includes('Stop') && 
+         (btn.querySelector('.spin') || btn.textContent.includes('progress_activity'))) {
+        stopBtn = btn;
+        break;
+      }
+    }
 
     if (stopBtn && !isGenerating) {
       isGenerating = true;

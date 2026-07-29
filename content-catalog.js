@@ -64,9 +64,27 @@
 
   function updateCatalogData(conversationTurns) {
     try {
-      State.setCatalogData(extractUserPrompts(conversationTurns));
-      if (catalogVisible) {
-        renderPromptList();
+      const newData = extractUserPrompts(conversationTurns);
+      const oldData = State.getCatalogData();
+      
+      let isDifferent = false;
+      if (!oldData || newData.length !== oldData.length) {
+        isDifferent = true;
+      } else {
+        for (let i = 0; i < newData.length; i++) {
+          if (newData[i].promptText !== oldData[i].promptText || 
+              newData[i].turnElementId !== oldData[i].turnElementId) {
+            isDifferent = true;
+            break;
+          }
+        }
+      }
+
+      if (isDifferent) {
+        State.setCatalogData(newData);
+        if (catalogVisible) {
+          renderPromptList();
+        }
       }
     } catch (error) {
       console.error('Error updating catalog data:', error);
@@ -104,18 +122,27 @@
     let validationTimer = null;
     const observer = new MutationObserver((mutations) => {
       let shouldValidate = false;
-      mutations.forEach((mutation) => {
+      for (let m = 0; m < mutations.length; m++) {
+        const mutation = mutations[m];
         if (mutation.type === 'childList') {
-          mutation.removedNodes.forEach((node) => {
+          for (let i = 0; i < mutation.removedNodes.length; i++) {
+            const node = mutation.removedNodes[i];
             if (node.nodeType === Node.ELEMENT_NODE) {
-              if (node.tagName.toLowerCase() === Utils.SELECTORS.tag.chatTurn ||
-                node.querySelector && node.querySelector(Utils.SELECTORS.query.chatTurn)) {
+              const tag = node.tagName.toLowerCase();
+              if (tag === 'ms-chat-turn' || tag === Utils.SELECTORS.tag.chatTurn) {
                 shouldValidate = true;
+                break;
+              } else if (tag === 'div' || tag === 'main' || tag === 'section') {
+                if (node.querySelector && node.querySelector(Utils.SELECTORS.query.chatTurn)) {
+                  shouldValidate = true;
+                  break;
+                }
               }
             }
-          });
+          }
         }
-      });
+        if (shouldValidate) break;
+      }
       if (shouldValidate) {
         clearTimeout(validationTimer);
         validationTimer = setTimeout(validateCatalogData, 100);
