@@ -235,16 +235,19 @@
 
       // --- Dynamically Update Observers for Route Changes ---
       const targetContainer = Catalog.getChatMainContainer();
-      if (targetContainer && targetContainer !== currentlyObservedContainer) {
+      if (targetContainer !== currentlyObservedContainer) {
         if (scrollBtnResizeObserver) {
           scrollBtnResizeObserver.disconnect();
+          scrollBtnResizeObserver = null;
         }
         currentlyObservedContainer = targetContainer;
-        scrollBtnResizeObserver = new ResizeObserver(() => {
-          Catalog.updateScrollButtonPosition();
-          Catalog.updateScrollBtnOverlayVisibility();
-        });
-        scrollBtnResizeObserver.observe(targetContainer);
+        if (targetContainer) {
+          scrollBtnResizeObserver = new ResizeObserver(() => {
+            Catalog.updateScrollButtonPosition();
+            Catalog.updateScrollBtnOverlayVisibility();
+          });
+          scrollBtnResizeObserver.observe(targetContainer);
+        }
       }
       Catalog.updateScrollButtonPosition();
 

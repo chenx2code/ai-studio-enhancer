@@ -25,18 +25,22 @@
   };
 
   window.XMLHttpRequest.prototype.send = function(...args) {
-    this.addEventListener('load', function() {
-      const matchedKeyword = getTargetKeyword(this._url);
-      if (this.readyState === 4 && matchedKeyword) {
-         
+    const xhr = this;
+    
+    function onLoad() {
+      xhr.removeEventListener('load', onLoad);
+      const matchedKeyword = getTargetKeyword(xhr._url);
+      if (xhr.readyState === 4 && matchedKeyword) {
         try {
-          const data = JSON.parse(this.responseText);
+          const data = JSON.parse(xhr.responseText);
           window.postMessage({ type: 'FROM_INTERCEPTOR', payload: data, apiKeyword: matchedKeyword }, '*');
         } catch (e) {
           console.error('解析 XHR 响应为JSON时出错:', e);
         }
       }
-    });
+    }
+    
+    this.addEventListener('load', onLoad);
     return originalXhrSend.apply(this, args);
   };
 
