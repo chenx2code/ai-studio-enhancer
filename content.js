@@ -34,12 +34,9 @@
         let turns = null;
         let promptData = null;
 
-        if (apiKeyword === 'ResolveDriveResource') {
-          turns = data?.[0]?.[13]?.[0];
-          promptData = data?.[0]?.[4];
-        } else if (apiKeyword === 'UpdatePrompt' || apiKeyword === 'CreatePrompt') {
-          turns = data?.[13]?.[0];
-          promptData = data?.[4];
+        if (apiKeyword === 'ResolveDriveResource' || apiKeyword === 'UpdatePrompt' || apiKeyword === 'CreatePrompt') {
+          turns = data?.turns;
+          promptData = data?.promptData;
         }
 
         // Update conversation history
@@ -235,16 +232,19 @@
 
       // --- Dynamically Update Observers for Route Changes ---
       const targetContainer = Catalog.getChatMainContainer();
-      if (targetContainer && targetContainer !== currentlyObservedContainer) {
+      if (targetContainer !== currentlyObservedContainer) {
         if (scrollBtnResizeObserver) {
           scrollBtnResizeObserver.disconnect();
+          scrollBtnResizeObserver = null;
         }
         currentlyObservedContainer = targetContainer;
-        scrollBtnResizeObserver = new ResizeObserver(() => {
-          Catalog.updateScrollButtonPosition();
-          Catalog.updateScrollBtnOverlayVisibility();
-        });
-        scrollBtnResizeObserver.observe(targetContainer);
+        if (targetContainer) {
+          scrollBtnResizeObserver = new ResizeObserver(() => {
+            Catalog.updateScrollButtonPosition();
+            Catalog.updateScrollBtnOverlayVisibility();
+          });
+          scrollBtnResizeObserver.observe(targetContainer);
+        }
       }
       Catalog.updateScrollButtonPosition();
 
