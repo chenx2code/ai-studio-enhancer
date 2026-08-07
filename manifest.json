@@ -23,6 +23,7 @@
         "content-state.js",
         "content-markdown.js",
         "content-catalog.js",
+        "content-prompt-history-navigation.js",
         "content-notification.js",
         "content.js"
       ],

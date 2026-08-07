@@ -40,6 +40,15 @@ Main use cases include conversation archiving, content referencing, interaction 
     *   Visual indicators appear when a catalog item gains focus.
     *   Press Enter or Space to jump to the corresponding conversation position.
 
+### ⌨️ Terminal-like Prompt History Navigation
+
+*   **Quick Recall:** Use the `ArrowUp` and `ArrowDown` keys in the prompt input box to effortlessly navigate through your previous prompts, just like in a terminal.
+*   **Smart Triggers (Anti-interference):** Carefully designed to prevent accidental triggers while editing multi-line text:
+    *   History mode is **only** triggered when your cursor is at the absolute beginning (index 0) of the input box and you press `ArrowUp`.
+    *   Once in history mode, use `ArrowUp` and `ArrowDown` to rapidly cycle through your past inputs.
+    *   Any text modifications, `Left`/`Right` arrow keys, or mouse clicks will instantly exit history mode and revert to normal text editing.
+*   **Draft Preservation:** If you start typing and decide to check your history, your current input is saved as a draft. You can easily retrieve it by navigating back to the newest entry with `ArrowDown`.
+
 ### 🔔 Smart Background Notifications
 
 *   **Generation Complete Alert:** Sends a native OS desktop notification when AI finishes generating a response.
@@ -83,6 +92,8 @@ Main use cases include conversation archiving, content referencing, interaction 
 5.  Click the list icon again or the close button in the catalog panel to close the catalog.
 
 <video src="https://github.com/user-attachments/assets/d953b424-9503-4969-82c6-e032a2ff5c4a"></video>
+
+
 
 ---
 
