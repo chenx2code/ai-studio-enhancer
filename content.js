@@ -13,6 +13,7 @@
   const Markdown = Enhancer.Markdown;
   const Catalog = Enhancer.Catalog;
   const Notification = Enhancer.Notification;
+  const PromptHistoryNavigation = Enhancer.PromptHistoryNavigation;
 
   /**
    * PART 1: Inject Interceptor Script
@@ -259,6 +260,7 @@
     Catalog.setupConversationObserver();
     Catalog.setupWindowListeners();
     Notification.initObserver();
+    if (PromptHistoryNavigation) PromptHistoryNavigation.initialize();
 
     const lastScrollTops = new WeakMap();
     const lastScrollHeights = new WeakMap();
