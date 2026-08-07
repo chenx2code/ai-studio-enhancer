@@ -87,15 +87,7 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 
 <video src="https://github.com/user-attachments/assets/d953b424-9503-4969-82c6-e032a2ff5c4a"></video>
 
----
 
-### ⌨️ 终端式历史导航 (Terminal-like History)
-
-1.  确保右侧的对话目录中已经有之前的对话历史。
-2.  确保底部的提问输入框为空，或者将光标移动到整个文本的最前面。
-3.  按下 **上键 (ArrowUp)** 即可调出上一条发送的提问。
-4.  继续按 **上键** 或 **下键 (ArrowDown)** 可以在历史提问中穿梭。
-5.  如果想对某条历史进行修改并作为新提问发送，只需按下 **左/右方向键**，或者直接开始打字（这会自动退出历史浏览模式，进入正常编辑状态）。
 
 ---
 

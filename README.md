@@ -93,15 +93,7 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 <video src="https://github.com/user-attachments/assets/d953b424-9503-4969-82c6-e032a2ff5c4a"></video>
 
----
 
-### ⌨️ Terminal-like Prompt History Navigation
-
-1.  Make sure you have some conversation history in the right sidebar catalog.
-2.  Ensure the prompt input box is empty, or place your cursor at the very beginning of the text.
-3.  Press **ArrowUp** to recall your most recent prompt. 
-4.  Keep pressing **ArrowUp** or **ArrowDown** to navigate through older or newer prompts.
-5.  Press **ArrowLeft**, **ArrowRight**, or any letter key to start editing the recalled prompt (this exits history mode).
 
 ---
 
