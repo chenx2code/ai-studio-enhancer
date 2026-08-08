@@ -35,6 +35,7 @@ Main use cases include conversation archiving, content referencing, interaction 
     *   Click any catalog item to quickly jump to the corresponding position.
 *   **Visual Feedback:** Provides highlight effects during navigation, clearly marking target positions.
 *   **Real-time Sync:** Automatically updates catalog content when conversation changes.
+*   **One-Click Jump to Bottom:** Provides a floating "Scroll to Bottom" button. It automatically appears when you scroll up to view history, allowing you to instantly return to the very bottom of the conversation (the newest content) with a single click.
 *   **Keyboard Navigation:** Enhanced accessibility:
     *   Users can navigate between catalog items using the Tab key.
     *   Visual indicators appear when a catalog item gains focus.
