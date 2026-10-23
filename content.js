@@ -103,8 +103,8 @@
       if (!document.getElementById(Utils.SELECTORS.id.exportButton)) {
         const exportButton = Utils.createToolbarButton(
           Utils.SELECTORS.id.exportButton, 
-          'markdown_copy', 
-          chrome.i18n.getMessage('tooltipCopyMarkdown'), 
+          'download', 
+          chrome.i18n.getMessage('tooltipDownloadMarkdown') || chrome.i18n.getMessage('tooltipCopyMarkdown'), 
           Markdown.exportToMarkdown, 
           'icon-borderless'
         );
