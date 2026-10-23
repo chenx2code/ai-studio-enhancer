@@ -4,11 +4,15 @@
     "description": "The name of the extension."
   },
   "extensionDescription": {
-    "message": " Enhances Google AI Studio with one-click Markdown copy and a conversation catalog for easy navigation.",
+    "message": "Enhances Google AI Studio with one-click Markdown download and a conversation catalog for easy navigation.",
     "description": "The description of the extension."
   },
+  "tooltipDownloadMarkdown": {
+    "message": "Download conversation as Markdown (.md)",
+    "description": "The tooltip text for the download button."
+  },
   "tooltipCopyMarkdown": {
-    "message": "Copy conversation as Markdown",
+    "message": "Download conversation as Markdown (.md)",
     "description": "The tooltip text for the copy button."
   },
   "promptTitleDefault": {
@@ -54,6 +58,10 @@
   "accountInfo": {
     "message": "Account",
     "description": "Label for the account information in the exported markdown."
+  },
+  "promptLabel": {
+    "message": "User Prompt",
+    "description": "Label for the quoted user prompt in the exported markdown."
   },
   "settingIncludeLink": {
     "message": "Include original conversation link",

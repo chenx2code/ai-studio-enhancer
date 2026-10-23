@@ -10,7 +10,7 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 
 ### 📋 Markdown 导出功能
 
-*   **一键复制:** 在对话页面的工具栏上添加一个易于操作的"复制对话为 Markdown 格式"按钮。
+*   **一键下载:** 在对话页面的工具栏上添加一个易于操作的"下载对话为 Markdown 格式 (.md)"按钮。
 *   **自定义导出选项:** 点击浏览器工具栏的插件图标，可以打开设置菜单，自由切换是否包含：
     *   模型的思考过程 (Thought process)
     *   对话原链接 (Original link)
@@ -18,7 +18,8 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 *   **结构化 Markdown:** 自动将对话转换为标准的 Markdown 格式：
     *   对话标题作为一级标题 (`#`)。
     *   用户的每个提问作为二级标题 (`##`)。
-    *   模型的每个思考过程和最终回答作为正文，同时保证原有的 Markdown 格式。
+    *   **智能大纲层级保护：** AI 回答中的各级标题自动动态平移降级至三级 (`###`) 及以下，代码块注释不受影响，确保在 Typora、VS Code、Obsidian 等编辑器中大纲树清晰严谨。
+    *   模型的思考过程和最终回答作为正文，保证原有的 Markdown 格式。
     *   使用 `---` 分隔线区分不同的对话轮次。
 
 ### 🧭 对话导航功能
@@ -70,9 +71,9 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 ### 📋 Markdown 导出
 
 1.  与模型对话，等待对话自动存储至 Google Drive。
-2.  点击工具栏中的 Markdown 图标。
-3.  浏览器会弹窗提示"对话已成功复制！"。
-4.  现在，Markdown 格式的对话内容已经在您的剪贴板里了。您可以将其粘贴到任何文本编辑器（如 Typora, VS Code）、笔记软件或需要使用该内容的地方。
+2.  点击工具栏中的下载图标。
+3.  浏览器将直接自动下载对话为 `.md` Markdown 文件（以当前对话标题命名）。
+4.  您可以使用任何文本编辑器（如 Typora, VS Code）、笔记软件打开该文件，或直接在本地归档保存。
 
 <video src="https://github.com/user-attachments/assets/9b7db6ac-3912-4844-bd21-b6a085b15ea1"></video>
 

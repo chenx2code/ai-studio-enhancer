@@ -12,7 +12,7 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 ### 📋 Markdown Export Feature
 
-*   **One-Click Copy:** Adds an easy-to-use "Copy conversation as Markdown" button to the conversation page toolbar.
+*   **One-Click Download:** Adds an easy-to-use "Download conversation as Markdown" button to the conversation page toolbar.
 *   **Customizable Export:** Click the extension icon in your browser toolbar to open the settings popup, where you can toggle:
     *   Include model's thought process
     *   Include original conversation link
@@ -20,6 +20,7 @@ Main use cases include conversation archiving, content referencing, interaction 
 *   **Structured Markdown:** Automatically converts conversations into standard Markdown format:
     *   Conversation title as level-1 heading (`#`).
     *   Each user prompt as level-2 heading (`##`).
+    *   **Smart Heading Hierarchy:** Headings inside AI responses are dynamically demoted to level 3 (`###`) and below to prevent outline pollution in Typora, VS Code, and Obsidian, while code block comments remain strictly intact.
     *   Model's thought process and final answer as body text, preserving original Markdown formatting.
     *   Uses `---` separator to distinguish different conversation rounds.
 
@@ -74,9 +75,9 @@ Main use cases include conversation archiving, content referencing, interaction 
 ### 📋 Markdown Export
 
 1.  Chat with the model and wait for the conversation to be automatically saved to Google Drive.
-2.  Click the Markdown icon in the toolbar.
-3.  The browser will show a popup notification "Conversation copied successfully!".
-4.  Now, the Markdown-formatted conversation content is in your clipboard. You can paste it into any text editor (like Typora, VS Code), note-taking software, or wherever you need to use the content.
+2.  Click the download icon in the toolbar.
+3.  The browser will directly download the conversation as a `.md` Markdown file (named after your conversation title).
+4.  You can open the downloaded Markdown file in any text editor (like Typora, VS Code), note-taking software, or archive it locally.
 
 <video src="https://github.com/user-attachments/assets/9b7db6ac-3912-4844-bd21-b6a085b15ea1"></video>
 

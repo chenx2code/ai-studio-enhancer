@@ -4,12 +4,16 @@
     "description": "插件的名称。"
   },
   "extensionDescription": {
-    "message": "增强 Google AI Studio 使用体验，一键复制完整对话为 Markdown 格式，并通过对话目录在长篇会话中快速跳转和定位。",
+    "message": "增强 Google AI Studio 使用体验，一键下载完整对话为 Markdown 格式，并通过对话目录在长篇会话中快速跳转和定位。",
     "description": "插件的描述。"
   },
+  "tooltipDownloadMarkdown": {
+    "message": "下载对话为 Markdown 格式 (.md)",
+    "description": "下载按钮的工具提示文本。"
+  },
   "tooltipCopyMarkdown": {
-    "message": "复制对话为 Markdown 格式",
-    "description": "复制按钮的工具提示文本。"
+    "message": "下载对话为 Markdown 格式 (.md)",
+    "description": "复制/下载按钮的工具提示文本。"
   },
   "promptTitleDefault": {
     "message": "未命名对话",
@@ -54,6 +58,10 @@
   "accountInfo": {
     "message": "账号",
     "description": "导出的 Markdown 中账号信息的标签。"
+  },
+  "promptLabel": {
+    "message": "用户提问",
+    "description": "导出的 Markdown 中引用完整提问的标签。"
   },
   "settingIncludeLink": {
     "message": "导出时包含原始对话链接",
