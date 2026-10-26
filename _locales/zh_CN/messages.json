@@ -47,6 +47,22 @@
     "message": "设置",
     "description": "扩展弹窗的标题。"
   },
+  "exportSectionTitle": {
+    "message": "导出偏好",
+    "description": "弹窗中导出偏好区域的标题。"
+  },
+  "notificationSectionTitle": {
+    "message": "通知提醒",
+    "description": "弹窗中通知设置区域的标题。"
+  },
+  "settingIncludeThoughtsTitle": {
+    "message": "包含思考过程",
+    "description": "包含思考过程选项的标题。"
+  },
+  "settingIncludeThoughtsDesc": {
+    "message": "导出模型的思考链与推理过程",
+    "description": "包含思考过程选项的描述。"
+  },
   "settingIncludeThoughts": {
     "message": "导出 Markdown 时包含模型思考过程",
     "description": "弹窗中切换开关的标签文本。"
@@ -63,17 +79,49 @@
     "message": "用户提问",
     "description": "导出的 Markdown 中引用完整提问的标签。"
   },
+  "settingIncludeLinkTitle": {
+    "message": "包含对话链接",
+    "description": "包含对话链接选项的标题。"
+  },
+  "settingIncludeLinkDesc": {
+    "message": "导出 Markdown 时附带原始对话链接",
+    "description": "包含对话链接选项的描述。"
+  },
   "settingIncludeLink": {
     "message": "导出时包含原始对话链接",
     "description": "弹窗中切换开关的标签文本。"
+  },
+  "settingIncludeAccountTitle": {
+    "message": "包含账号邮箱",
+    "description": "包含账号邮箱选项的标题。"
+  },
+  "settingIncludeAccountDesc": {
+    "message": "导出 Markdown 时附带当前账号信息",
+    "description": "包含账号邮箱选项的描述。"
   },
   "settingIncludeAccount": {
     "message": "导出时包含当前账号邮箱",
     "description": "弹窗中切换开关的标签文本。"
   },
+  "settingEnableNotificationsTitle": {
+    "message": "桌面通知",
+    "description": "桌面通知选项的标题。"
+  },
+  "settingEnableNotificationsDesc": {
+    "message": "生成完毕时发送通知（仅后台标签触发）",
+    "description": "桌面通知选项的描述。"
+  },
   "settingEnableNotifications": {
     "message": "生成完毕时发送桌面通知（仅在页面处于后台时触发）",
     "description": "弹窗中切换开关的标签文本。"
+  },
+  "autoSaveText": {
+    "message": "更改已自动保存",
+    "description": "弹窗底部自动保存状态文本。"
+  },
+  "savedFeedback": {
+    "message": "设置已保存",
+    "description": "保存设置时的反馈文本。"
   },
   "notificationTitle": {
     "message": "生成完成",

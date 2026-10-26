@@ -1,33 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Studio Enhancer Settings</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="container">
-    <h3 id="popup-title">Settings</h3>
-    <label class="toggle-container">
-      <input type="checkbox" id="include-thoughts-checkbox">
-      <span class="slider round"></span>
-      <span class="label-text" id="setting-include-thoughts">Include thought process</span>
-    </label>
-    <label class="toggle-container">
-      <input type="checkbox" id="include-link-checkbox">
-      <span class="slider round"></span>
-      <span class="label-text" id="setting-include-link">Include original link</span>
-    </label>
-    <label class="toggle-container">
-      <input type="checkbox" id="include-account-checkbox">
-      <span class="slider round"></span>
-      <span class="label-text" id="setting-include-account">Include account email</span>
-    </label>
-    <label class="toggle-container">
-      <input type="checkbox" id="enable-notifications-checkbox">
-      <span class="slider round"></span>
-      <span class="label-text" id="setting-enable-notifications">Enable Notifications</span>
-    </label>
+  <div class="popup-container">
+    <!-- Header: Product branding and version -->
+    <header class="popup-header">
+      <div class="brand">
+        <img class="brand-icon" src="icons/icon32.png" alt="AI Studio Enhancer" width="22" height="22">
+        <span class="brand-name">AI Studio Enhancer</span>
+      </div>
+      <span class="version-chip" id="versionChip">v1.1.18</span>
+    </header>
+
+    <!-- Main Content: Settings options -->
+    <main class="popup-main">
+      <!-- Section 1: Export Preferences -->
+      <div class="section-header">
+        <span class="section-title" id="exportSectionTitle">Export Preferences</span>
+      </div>
+
+      <div class="settings-card">
+        <!-- Option 1: Thinking process -->
+        <label class="setting-row" for="includeThoughts">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12 2C7.03 2 3 6.03 3 11c0 2.78 1.28 5.26 3.29 6.89V20c0 .55.45 1 1 1h9.42c.55 0 1-.45 1-1v-2.11C19.72 16.26 21 13.78 21 11c0-4.97-4.03-9-9-9zm-1 17h-2v-1h2v1zm4 0h-2v-1h2v1zm1.71-3.29l-.71.5V18H8v-1.79l-.71-.5A6.974 6.974 0 0 1 5 11c0-3.86 3.14-7 7-7s7 3.14 7 7c0 1.84-.71 3.52-1.99 4.71z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="thoughtsTitle">Include thinking process</span>
+            <span class="setting-desc" id="thoughtsDesc">Export model reasoning and thoughts</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="includeThoughts" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <div class="row-divider"></div>
+
+        <!-- Option 2: Original conversation link -->
+        <label class="setting-row" for="includeLink">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="linkTitle">Include conversation link</span>
+            <span class="setting-desc" id="linkDesc">Add original chat link to Markdown export</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="includeLink" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <div class="row-divider"></div>
+
+        <!-- Option 3: Account email -->
+        <label class="setting-row" for="includeAccount">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="accountTitle">Include account email</span>
+            <span class="setting-desc" id="accountDesc">Add Google account email to Markdown header</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="includeAccount" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+      </div>
+
+      <!-- Section 2: Notifications -->
+      <div class="section-header section-header-secondary">
+        <span class="section-title" id="notificationSectionTitle">Notifications</span>
+      </div>
+
+      <div class="settings-card">
+        <!-- Option 4: Desktop notifications -->
+        <label class="setting-row" for="enableNotifications">
+          <div class="setting-leading-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+            </svg>
+          </div>
+          <div class="setting-info">
+            <span class="setting-title" id="notificationsTitle">Desktop notifications</span>
+            <span class="setting-desc" id="notificationsDesc">Notify when generation is complete (background only)</span>
+          </div>
+          <div class="switch-container">
+            <input type="checkbox" id="enableNotifications" class="m3-switch-input">
+            <div class="m3-switch-track">
+              <div class="m3-switch-thumb">
+                <svg class="m3-switch-check" viewBox="0 0 24 24" width="11" height="11">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </label>
+      </div>
+    </main>
+
+    <!-- Footer: Auto-save status feedback -->
+    <footer class="popup-footer">
+      <div class="status-indicator" id="statusIndicator">
+        <svg class="status-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+        </svg>
+        <span class="status-text" id="statusText">Changes saved automatically</span>
+      </div>
+    </footer>
   </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

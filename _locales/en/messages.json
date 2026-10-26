@@ -47,6 +47,22 @@
     "message": "Settings",
     "description": "The title of the extension popup."
   },
+  "exportSectionTitle": {
+    "message": "Export Preferences",
+    "description": "Section header for export preferences in popup."
+  },
+  "notificationSectionTitle": {
+    "message": "Notifications",
+    "description": "Section header for notifications in popup."
+  },
+  "settingIncludeThoughtsTitle": {
+    "message": "Include thinking process",
+    "description": "Title for include thoughts setting."
+  },
+  "settingIncludeThoughtsDesc": {
+    "message": "Export model reasoning and thoughts",
+    "description": "Description for include thoughts setting."
+  },
   "settingIncludeThoughts": {
     "message": "Include AI thought process in Markdown export",
     "description": "The label for the toggle switch in the popup."
@@ -63,17 +79,49 @@
     "message": "User Prompt",
     "description": "Label for the quoted user prompt in the exported markdown."
   },
+  "settingIncludeLinkTitle": {
+    "message": "Include conversation link",
+    "description": "Title for include link setting."
+  },
+  "settingIncludeLinkDesc": {
+    "message": "Add original chat link to Markdown export",
+    "description": "Description for include link setting."
+  },
   "settingIncludeLink": {
     "message": "Include original conversation link",
     "description": "Label for the toggle switch to include original link."
+  },
+  "settingIncludeAccountTitle": {
+    "message": "Include account email",
+    "description": "Title for include account setting."
+  },
+  "settingIncludeAccountDesc": {
+    "message": "Add Google account email to Markdown header",
+    "description": "Description for include account setting."
   },
   "settingIncludeAccount": {
     "message": "Include account email",
     "description": "Label for the toggle switch to include account email."
   },
+  "settingEnableNotificationsTitle": {
+    "message": "Desktop notifications",
+    "description": "Title for desktop notifications setting."
+  },
+  "settingEnableNotificationsDesc": {
+    "message": "Notify when generation is complete (background only)",
+    "description": "Description for desktop notifications setting."
+  },
   "settingEnableNotifications": {
     "message": "Enable Desktop Notifications when generation is complete (background only)",
     "description": "Label for the toggle switch to enable desktop notifications."
+  },
+  "autoSaveText": {
+    "message": "Changes saved automatically",
+    "description": "Text in popup footer indicating automatic save."
+  },
+  "savedFeedback": {
+    "message": "Settings saved",
+    "description": "Feedback message when settings are saved."
   },
   "notificationTitle": {
     "message": "Generation Complete",
