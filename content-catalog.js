@@ -96,8 +96,8 @@
     }
   }
 
-  // Extract attachments for a turn from live DOM elements and API turn data
-  function extractAttachments(turn, turnEl) {
+  // Extract attachments for a round of user chunks from live DOM elements and API turn data
+  function extractRoundAttachments(chunks, turnEl, fullText) {
     const attachments = [];
     const seenSignatures = new Set();
 
@@ -126,18 +126,29 @@
         }
       });
 
-      // File elements / chips in user turn (e.g. file chips, attachment buttons, download links)
-      const fileElements = Array.from(turnEl.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], [data-test-id*="file"]')).filter((el) => {
-        return el.textContent && el.textContent.trim().length > 0 && !el.querySelector('[class*="file"], [class*="chip"]');
+      // File elements / chips in user turn (cards, file chips, attachment previews)
+      const fileElements = Array.from(turnEl.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], ms-file-chunk, ms-media-chunk, [data-test-id*="file"]')).filter((el) => {
+        // Exclude outer chat containers
+        if (el.classList.contains('chat-turn-container') || el.tagName.toLowerCase() === 'ms-chat-turn') {
+          return false;
+        }
+        const text = el.textContent ? el.textContent.trim() : '';
+        if (!text || (fullText && text === fullText)) return false;
+        // Keep leaf-ish elements to avoid duplicate parents
+        return !el.querySelector('[class*="file"], [class*="chip"], [class*="attachment"]');
       });
 
       fileElements.forEach((fel) => {
-        const rawText = fel.textContent.trim();
+        let rawText = fel.textContent.trim();
+        // Remove trailing token counts like "7,281 tokens" or "12k tokens"
+        rawText = rawText.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/i, '').trim();
         const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-        const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
+        let fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
+        fName = fName.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/i, '').trim();
+
         if (fName && fName.length < 150 && !fName.toLowerCase().includes('run settings')) {
           const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
-          let fileType = extMatch ? extMatch[1].toUpperCase() : 'File';
+          let fileType = extMatch ? extMatch[1].toUpperCase() : 'PDF';
           const isFolder = fName.toLowerCase().includes('folder');
           const category = detectFileCategory(fileType, fName, isFolder);
           const sig = `file:${fName}`;
@@ -154,8 +165,10 @@
       });
     }
 
-    // 2. Fallback / supplement from API turn data if no DOM attachments extracted
-    if (attachments.length === 0 && Array.isArray(turn)) {
+    // 2. Extract or supplement from API chunks in this round
+    chunks.forEach(({ turn, index }) => {
+      if (!Array.isArray(turn)) return;
+
       const imageContent = turn[1];
       const cloudFileContent = turn[3];
       const inlineContent = turn[12];
@@ -164,21 +177,31 @@
 
       if ((imageContent && Array.isArray(imageContent) && imageContent.length > 0) ||
           (inlineContent && Array.isArray(inlineContent) && inlineContent.length > 0)) {
-        attachments.push({
-          type: 'image',
-          fileCategory: 'image',
-          fileType: 'IMG',
-          fileName: chrome.i18n.getMessage('imageLabel') || 'Image'
-        });
+        const sig = 'image:api';
+        if (!seenSignatures.has(sig) && attachments.filter(a => a.type === 'image').length === 0) {
+          seenSignatures.add(sig);
+          attachments.push({
+            type: 'image',
+            fileCategory: 'image',
+            fileType: 'IMG',
+            fileName: chrome.i18n.getMessage('imageLabel') || 'Image',
+            turnIndex: index
+          });
+        }
       }
 
       if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-        attachments.push({
-          type: 'video',
-          fileCategory: 'video',
-          fileType: 'Video',
-          fileName: 'YouTube Video'
-        });
+        const sig = 'video:youtube';
+        if (!seenSignatures.has(sig)) {
+          seenSignatures.add(sig);
+          attachments.push({
+            type: 'video',
+            fileCategory: 'video',
+            fileType: 'Video',
+            fileName: 'YouTube Video',
+            turnIndex: index
+          });
+        }
       }
 
       if (docContent && Array.isArray(docContent) && docContent.length > 0) {
@@ -187,26 +210,54 @@
         const friendlyType = Utils.getFriendlyFileType(mimeOrName);
         let tag = friendlyType === 'Markdown' ? 'MD' : (friendlyType === 'Document' ? 'DOC' : friendlyType.toUpperCase());
         const category = detectFileCategory(tag, fileName || mimeOrName, false);
-        if (!fileName) {
-          fileName = `${friendlyType} ${chrome.i18n.getMessage('fileLabel') || 'File'}`;
+
+        // If we already have a DOM attachment without an accurate fileType, enhance it
+        const unassignedFile = attachments.find(a => a.type === 'file' && !a.enhanced);
+        if (unassignedFile) {
+          unassignedFile.fileType = tag;
+          unassignedFile.fileCategory = category;
+          unassignedFile.enhanced = true;
+          unassignedFile.turnIndex = index;
+        } else {
+          if (!fileName) {
+            fileName = `${friendlyType} ${chrome.i18n.getMessage('fileLabel') || 'File'}`;
+          }
+          const sig = `file:${fileName}`;
+          if (!seenSignatures.has(sig)) {
+            seenSignatures.add(sig);
+            attachments.push({
+              type: 'file',
+              fileCategory: category,
+              fileType: tag,
+              fileName: fileName,
+              turnIndex: index
+            });
+          }
         }
-        attachments.push({
-          type: 'file',
-          fileCategory: category,
-          fileType: tag,
-          fileName: fileName
-        });
       }
 
       if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0) {
-        attachments.push({
-          type: 'file',
-          fileCategory: 'pdf',
-          fileType: 'PDF',
-          fileName: `PDF ${chrome.i18n.getMessage('fileLabel') || 'File'}`
-        });
+        const unassignedFile = attachments.find(a => a.type === 'file' && !a.enhanced);
+        if (unassignedFile) {
+          unassignedFile.fileType = 'PDF';
+          unassignedFile.fileCategory = 'pdf';
+          unassignedFile.enhanced = true;
+          unassignedFile.turnIndex = index;
+        } else {
+          const sig = 'file:cloud';
+          if (!seenSignatures.has(sig)) {
+            seenSignatures.add(sig);
+            attachments.push({
+              type: 'file',
+              fileCategory: 'pdf',
+              fileType: 'PDF',
+              fileName: `PDF ${chrome.i18n.getMessage('fileLabel') || 'File'}`,
+              turnIndex: index
+            });
+          }
+        }
       }
-    }
+    });
 
     return attachments;
   }
@@ -215,7 +266,8 @@
     if (!Array.isArray(conversationTurns)) {
       return [];
     }
-    const userPrompts = [];
+
+    // 1. Query all rendered user chat turn DOM elements
     const userTurnElements = [];
     const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
     for (const chatTurn of chatTurns) {
@@ -225,92 +277,125 @@
       }
     }
 
-    let turnCounter = 0;
-    let userTurnIdx = 0;
+    // 2. Group consecutive user chunks in conversationTurns into prompt rounds.
+    // In Google AI Studio, a single user prompt with attachments and text is stored as
+    // consecutive 'user' chunks (e.g. chunk 0: file, chunk 1: text) before a 'model' turn.
+    const userPromptRounds = [];
+    let currentRound = null;
 
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
       if (role === 'user') {
-        turnCounter++;
-        const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
-        const textContent = (turn[0] || '').trim();
-        const turnElement = userTurnElements[userTurnIdx] || null;
-        const turnElementId = turnElement ? turnElement.id : null;
-        userTurnIdx++;
-
-        const attachments = extractAttachments(turn, turnElement);
-
-        if (textContent) {
-          // A. Turn has text: text row is turn root
-          userPrompts.push({
-            turnCounter: turnCounter,
-            turnBadge: badgeStr,
-            isTurnRoot: true,
-            type: 'text',
-            turnIndex: index,
-            turnElementId: turnElementId,
-            promptText: textContent,
-            displayText: textContent,
-            truncatedText: Utils.truncateText(textContent, 50),
-            role: role
-          });
-
-          // Attachments become subsequent rows in the same turn (isTurnRoot: false)
-          attachments.forEach((att, attIdx) => {
-            userPrompts.push({
-              turnCounter: turnCounter,
-              turnBadge: '',
-              isTurnRoot: false,
-              type: att.type,
-              fileCategory: att.fileCategory,
-              fileType: att.fileType,
-              fileName: att.fileName,
-              turnIndex: index,
-              turnElementId: turnElementId,
-              promptText: `[${att.fileType}] ${att.fileName}`,
-              displayText: att.fileName,
-              subIndex: attIdx,
-              role: role
-            });
-          });
-        } else if (attachments.length > 0) {
-          // B. Turn has NO text, but has attachments: first attachment is turn root
-          attachments.forEach((att, attIdx) => {
-            const isRoot = attIdx === 0;
-            userPrompts.push({
-              turnCounter: turnCounter,
-              turnBadge: isRoot ? badgeStr : '',
-              isTurnRoot: isRoot,
-              type: att.type,
-              fileCategory: att.fileCategory,
-              fileType: att.fileType,
-              fileName: att.fileName,
-              turnIndex: index,
-              turnElementId: turnElementId,
-              promptText: `[${att.fileType}] ${att.fileName}`,
-              displayText: att.fileName,
-              subIndex: attIdx,
-              role: role
-            });
-          });
-        } else {
-          // C. Fallback: empty turn
-          userPrompts.push({
-            turnCounter: turnCounter,
-            turnBadge: badgeStr,
-            isTurnRoot: true,
-            type: 'text',
-            turnIndex: index,
-            turnElementId: turnElementId,
-            promptText: '[Prompt]',
-            displayText: '[Prompt]',
-            truncatedText: '[Prompt]',
-            role: role
-          });
+        if (!currentRound) {
+          currentRound = {
+            primaryTurnIndex: index,
+            chunks: []
+          };
+          userPromptRounds.push(currentRound);
         }
+        currentRound.chunks.push({ turn, index });
+      } else {
+        // Model turn ends the current user prompt round
+        currentRound = null;
       }
     });
+
+    const userPrompts = [];
+    let turnCounter = 0;
+
+    userPromptRounds.forEach((round, roundIdx) => {
+      turnCounter++;
+      const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
+
+      // Match 1:1 with corresponding user turn DOM element
+      const turnElement = userTurnElements[roundIdx] || null;
+      const turnElementId = turnElement ? turnElement.id : null;
+
+      // Extract combined text from all user chunks in this round
+      const textParts = [];
+      round.chunks.forEach(({ turn }) => {
+        const txt = (turn[0] || '').trim();
+        if (txt) {
+          textParts.push(txt);
+        }
+      });
+      const fullText = textParts.join(' ');
+      const primaryIndex = round.primaryTurnIndex;
+
+      // Extract attachments from DOM element and API chunks in this round
+      const attachments = extractRoundAttachments(round.chunks, turnElement, fullText);
+
+      if (fullText) {
+        // A. Round has text: text row is turn root (gets the sequence badge)
+        userPrompts.push({
+          turnCounter: turnCounter,
+          turnBadge: badgeStr,
+          isTurnRoot: true,
+          type: 'text',
+          turnIndex: primaryIndex,
+          turnElementId: turnElementId,
+          promptText: fullText,
+          displayText: fullText,
+          truncatedText: Utils.truncateText(fullText, 50),
+          role: 'user'
+        });
+
+        // Each attachment is indented directly below the prompt text (isTurnRoot: false)
+        attachments.forEach((att, attIdx) => {
+          userPrompts.push({
+            turnCounter: turnCounter,
+            turnBadge: '',
+            isTurnRoot: false,
+            type: att.type,
+            fileCategory: att.fileCategory,
+            fileType: att.fileType,
+            fileName: att.fileName,
+            turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
+            turnElementId: turnElementId,
+            promptText: `[${att.fileType}] ${att.fileName}`,
+            displayText: att.fileName,
+            subIndex: attIdx,
+            role: 'user'
+          });
+        });
+      } else if (attachments.length > 0) {
+        // B. Round has NO text, only attachments: first attachment is turn root
+        attachments.forEach((att, attIdx) => {
+          const isRoot = attIdx === 0;
+          userPrompts.push({
+            turnCounter: turnCounter,
+            turnBadge: isRoot ? badgeStr : '',
+            isTurnRoot: isRoot,
+            type: att.type,
+            fileCategory: att.fileCategory,
+            fileType: att.fileType,
+            fileName: att.fileName,
+            turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
+            turnElementId: turnElementId,
+            promptText: `[${att.fileType}] ${att.fileName}`,
+            displayText: att.fileName,
+            subIndex: attIdx,
+            role: 'user'
+          });
+        });
+      } else {
+        // C. Fallback: empty prompt
+        userPrompts.push({
+          turnCounter: turnCounter,
+          turnBadge: badgeStr,
+          isTurnRoot: true,
+          type: 'text',
+          turnIndex: primaryIndex,
+          turnElementId: turnElementId,
+          promptText: '[Prompt]',
+          displayText: '[Prompt]',
+          truncatedText: '[Prompt]',
+          role: 'user'
+        });
+      }
+    });
+
     return userPrompts;
   }
 
@@ -917,14 +1002,17 @@
     }
   }
 
-  function updateActiveTurnHighlight(turnIndex) {
+  function updateActiveTurnHighlight(turnIndex, turnCounter) {
     const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
     if (!list) return;
 
     const items = list.querySelectorAll('.catalog-list-item');
     items.forEach((item) => {
       const idx = item.getAttribute('data-turn-index');
-      if (idx !== null && parseInt(idx, 10) === turnIndex) {
+      const counter = item.getAttribute('data-turn-counter');
+      const matches = (turnCounter !== undefined && counter === String(turnCounter)) ||
+                      (idx !== null && parseInt(idx, 10) === turnIndex);
+      if (matches) {
         item.classList.add('catalog-item-selected');
       } else {
         item.classList.remove('catalog-item-selected');
@@ -978,7 +1066,7 @@
     }
 
     if (targetCatalogItem) {
-      updateActiveTurnHighlight(targetCatalogItem.turnIndex);
+      updateActiveTurnHighlight(targetCatalogItem.turnIndex, targetCatalogItem.turnCounter);
     }
   }
 
@@ -1042,6 +1130,9 @@
     const listItem = document.createElement('div');
     listItem.className = 'catalog-list-item';
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
+    if (catalogItem.turnCounter !== undefined) {
+      listItem.setAttribute('data-turn-counter', catalogItem.turnCounter);
+    }
     listItem.setAttribute('role', 'button');
     listItem.setAttribute('tabindex', '0');
     if (catalogItem.isTurnRoot) {
@@ -1089,7 +1180,7 @@
     listItem.appendChild(content);
 
     listItem.addEventListener('click', function () {
-      updateActiveTurnHighlight(catalogItem.turnIndex);
+      updateActiveTurnHighlight(catalogItem.turnIndex, catalogItem.turnCounter);
       navigateToPrompt(catalogItem.turnIndex);
     });
 
@@ -1112,7 +1203,7 @@
     const badge = document.getElementById('catalog-toc-badge');
     if (badge) {
       if (catalogData && catalogData.length > 0) {
-        const uniqueTurns = new Set(catalogData.map(item => item.turnIndex)).size;
+        const uniqueTurns = new Set(catalogData.map(item => item.turnCounter || item.turnIndex)).size;
         badge.textContent = String(uniqueTurns);
         badge.classList.remove('is-hidden');
       } else {
