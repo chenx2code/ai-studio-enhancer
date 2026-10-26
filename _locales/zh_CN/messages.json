@@ -36,8 +36,28 @@
     "description": "目录面板的标题文本。"
   },
   "catalogEmptyState": {
-    "message": "未找到对话提示",
+    "message": "暂无对话内容",
     "description": "当目录为空或没有用户提示时显示的消息。"
+  },
+  "catalogEmptyTitle": {
+    "message": "暂无对话内容",
+    "description": "空状态标题。"
+  },
+  "catalogEmptyDesc": {
+    "message": "发送消息后，目录将自动生成",
+    "description": "空状态描述。"
+  },
+  "closeCatalogTitle": {
+    "message": "关闭目录",
+    "description": "关闭目录面板按钮的提示文本。"
+  },
+  "imageLabel": {
+    "message": "图片",
+    "description": "图片类型标签。"
+  },
+  "fileLabel": {
+    "message": "文件",
+    "description": "文件类型标签。"
   },
   "tooltipScrollToBottom": {
     "message": "滚动到底部",

@@ -1,186 +1,545 @@
 /*
- * 1. Base positioning for custom buttons.
- *    We only need to ensure they are relatively positioned for the tooltip.
- *    All other styling (size, color, hover) is now inherited from the native classes.
+ * styles.css
+ * AI Studio Enhancer Google Material Design 3 Styles
  */
-/* Buttons no longer need relative positioning for tooltips */
+
+:root {
+  --catalog-font-family: 'Google Sans', 'Google Sans Text', Roboto, 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+
+  /* Light Theme */
+  --catalog-container-bg: #ffffff;
+  --catalog-header-bg: #ffffff;
+  --catalog-border: #e2e7ee;
+  --catalog-divider: #edf1f7;
+  --catalog-text-primary: #1f1f1f;
+  --catalog-text-secondary: #444746;
+  --catalog-text-tertiary: #747775;
+  --catalog-primary: #0b57d0;
+  --catalog-primary-hover: #0842a0;
+  --catalog-primary-container: #d3e3fd;
+  --catalog-badge-bg: #f4f6f8;
+  --catalog-badge-text: #444746;
+  --catalog-badge-active-bg: #e2edfd;
+  --catalog-badge-active-text: #041e49;
+  --catalog-item-hover: #edf2f9;
+  --catalog-item-active-bg: #edf4fe;
+  --catalog-item-active-text: #041e49;
+  --catalog-btn-color: #444746;
+  --catalog-btn-hover-bg: #eef2f9;
+  --catalog-btn-hover-color: #0b57d0;
+  --catalog-scrollbar-thumb: #dadce0;
+  --catalog-scrollbar-hover: #bdc1c6;
+
+  /* Category Colors */
+  --catalog-icon-image-bg: #f3e8fd;
+  --catalog-icon-image-color: #7c3aed;
+  --catalog-icon-folder-bg: #fef9c3;
+  --catalog-icon-folder-color: #ca8a04;
+  --catalog-icon-code-bg: #dcfce7;
+  --catalog-icon-code-color: #15803d;
+  --catalog-icon-pdf-bg: #fee2e2;
+  --catalog-icon-pdf-color: #b91c1c;
+  --catalog-icon-table-bg: #ecfdf5;
+  --catalog-icon-table-color: #047857;
+  --catalog-icon-text-bg: #e0f2fe;
+  --catalog-icon-text-color: #0369a1;
+  --catalog-icon-audio-bg: #ffedd5;
+  --catalog-icon-audio-color: #c2410c;
+  --catalog-icon-video-bg: #fce7f3;
+  --catalog-icon-video-color: #be185d;
+  --catalog-icon-archive-bg: #fef3c7;
+  --catalog-icon-archive-color: #92400e;
+  --catalog-icon-file-bg: #f1f3f4;
+  --catalog-icon-file-color: #444746;
+}
+
+/* Dark Theme Support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --catalog-container-bg: #1e1f20;
+    --catalog-header-bg: #1e1f20;
+    --catalog-border: #333537;
+    --catalog-divider: #282a2c;
+    --catalog-text-primary: #e3e3e3;
+    --catalog-text-secondary: #c4c7c5;
+    --catalog-text-tertiary: #8e918f;
+    --catalog-primary: #a8c7fa;
+    --catalog-primary-hover: #d3e3fd;
+    --catalog-primary-container: rgba(168, 199, 250, 0.16);
+    --catalog-badge-bg: #2d2f31;
+    --catalog-badge-text: #c4c7c5;
+    --catalog-badge-active-bg: #a8c7fa;
+    --catalog-badge-active-text: #00325b;
+    --catalog-item-hover: #282a2c;
+    --catalog-item-active-bg: rgba(168, 199, 250, 0.16);
+    --catalog-item-active-text: #e3e3e3;
+    --catalog-btn-color: #c4c7c5;
+    --catalog-btn-hover-bg: #2d2f31;
+    --catalog-btn-hover-color: #a8c7fa;
+    --catalog-scrollbar-thumb: #444746;
+    --catalog-scrollbar-hover: #5f6368;
+
+    --catalog-icon-image-bg: rgba(218, 185, 255, 0.15);
+    --catalog-icon-image-color: #d8b4fe;
+    --catalog-icon-folder-bg: rgba(254, 240, 138, 0.15);
+    --catalog-icon-folder-color: #fde047;
+    --catalog-icon-code-bg: rgba(187, 247, 208, 0.15);
+    --catalog-icon-code-color: #4ade80;
+    --catalog-icon-pdf-bg: rgba(254, 202, 202, 0.15);
+    --catalog-icon-pdf-color: #f87171;
+    --catalog-icon-table-bg: rgba(167, 243, 208, 0.15);
+    --catalog-icon-table-color: #34d399;
+    --catalog-icon-text-bg: rgba(186, 230, 253, 0.15);
+    --catalog-icon-text-color: #7dd3fc;
+    --catalog-icon-audio-bg: rgba(254, 215, 170, 0.15);
+    --catalog-icon-audio-color: #fb923c;
+    --catalog-icon-video-bg: rgba(251, 207, 232, 0.15);
+    --catalog-icon-video-color: #f472b6;
+    --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
+    --catalog-icon-archive-color: #fbbf24;
+    --catalog-icon-file-bg: #2d2f31;
+    --catalog-icon-file-color: #c4c7c5;
+  }
+}
+
+/* Explicit dark classes on body or html */
+body.dark-theme,
+html.dark-theme,
+html[data-theme="dark"],
+body[data-theme="dark"],
+[data-theme="dark"] {
+  --catalog-container-bg: #1e1f20;
+  --catalog-header-bg: #1e1f20;
+  --catalog-border: #333537;
+  --catalog-divider: #282a2c;
+  --catalog-text-primary: #e3e3e3;
+  --catalog-text-secondary: #c4c7c5;
+  --catalog-text-tertiary: #8e918f;
+  --catalog-primary: #a8c7fa;
+  --catalog-primary-hover: #d3e3fd;
+  --catalog-primary-container: rgba(168, 199, 250, 0.16);
+  --catalog-badge-bg: #2d2f31;
+  --catalog-badge-text: #c4c7c5;
+  --catalog-badge-active-bg: #a8c7fa;
+  --catalog-badge-active-text: #00325b;
+  --catalog-item-hover: #282a2c;
+  --catalog-item-active-bg: rgba(168, 199, 250, 0.16);
+  --catalog-item-active-text: #e3e3e3;
+  --catalog-btn-color: #c4c7c5;
+  --catalog-btn-hover-bg: #2d2f31;
+  --catalog-btn-hover-color: #a8c7fa;
+  --catalog-scrollbar-thumb: #444746;
+  --catalog-scrollbar-hover: #5f6368;
+
+  --catalog-icon-image-bg: rgba(218, 185, 255, 0.15);
+  --catalog-icon-image-color: #d8b4fe;
+  --catalog-icon-folder-bg: rgba(254, 240, 138, 0.15);
+  --catalog-icon-folder-color: #fde047;
+  --catalog-icon-code-bg: rgba(187, 247, 208, 0.15);
+  --catalog-icon-code-color: #4ade80;
+  --catalog-icon-pdf-bg: rgba(254, 202, 202, 0.15);
+  --catalog-icon-pdf-color: #f87171;
+  --catalog-icon-table-bg: rgba(167, 243, 208, 0.15);
+  --catalog-icon-table-color: #34d399;
+  --catalog-icon-text-bg: rgba(186, 230, 253, 0.15);
+  --catalog-icon-text-color: #7dd3fc;
+  --catalog-icon-audio-bg: rgba(254, 215, 170, 0.15);
+  --catalog-icon-audio-color: #fb923c;
+  --catalog-icon-video-bg: rgba(251, 207, 232, 0.15);
+  --catalog-icon-video-color: #f472b6;
+  --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
+  --catalog-icon-archive-color: #fbbf24;
+  --catalog-icon-file-bg: #2d2f31;
+  --catalog-icon-file-color: #c4c7c5;
+}
 
 /* Hide button when its panel is open */
 .button-hidden {
-    display: none !important;
+  display: none !important;
 }
 
 /*
- * 2. Custom Tooltip Style
- *    This is still needed as it's a custom element.
- *    It's positioned via JavaScript by appending to the body to avoid stacking context issues.
+ * Custom Tooltip Style
  */
 .custom-tooltip-text {
-    background-color: rgb(255, 255, 255);
-    color: rgb(50, 48, 44);
-    border-radius: 12px;
-    border: 0.8px solid rgb(238, 238, 236);
-    box-shadow: rgba(10, 13, 18, 0.1) 0px 1px 3px 0px, rgba(10, 13, 18, 0.1) 0px 1px 2px -1px;
-    padding: 8px 12px;
-    font-family: Inter, sans-serif;
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 16px;
-    text-align: center;
-    white-space: nowrap;
-    position: fixed; /* Use fixed positioning relative to the viewport */
-    z-index: 99999; /* High z-index to appear on top */
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 150ms ease-in-out;
-    /* top, left, and transform are now set by JavaScript */
+  background-color: var(--catalog-container-bg);
+  color: var(--catalog-text-primary);
+  border-radius: 12px;
+  border: 0.8px solid var(--catalog-border);
+  box-shadow: rgba(10, 13, 18, 0.1) 0px 1px 3px 0px, rgba(10, 13, 18, 0.1) 0px 1px 2px -1px;
+  padding: 8px 12px;
+  font-family: var(--catalog-font-family);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
 }
 
-/* 
- * The hover effect is now handled by JavaScript (mouseenter/mouseleave)
- * which adds/removes the element and sets its opacity.
- * The old hover rule is no longer needed.
- */
-
 /*
- * 3. Catalog Side Panel
+ * Catalog Side Panel
  */
 #catalog-side-panel {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background-color: rgb(255, 255, 255);
-    border-left: 1px solid rgb(224, 224, 224);
-    box-sizing: border-box;
-    flex-shrink: 0;
-    max-width: 0;
-    opacity: 0;
-    overflow: hidden;
-    transition: max-width 300ms cubic-bezier(0.4, 0, 0.2, 1), 
-                opacity 200ms ease-in-out;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--catalog-container-bg);
+  border-left: 1px solid var(--catalog-border);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 300ms cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 200ms ease-in-out;
+  font-family: var(--catalog-font-family);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 #catalog-side-panel.panel-visible {
-    max-width: 300px;
-    opacity: 1;
+  max-width: 300px;
+  opacity: 1;
 }
 
 #catalog-side-panel.no-transition {
-    transition: none !important;
+  transition: none !important;
 }
 
 #catalog-side-panel .content-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-    width: 300px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  width: 300px;
 }
 
+/* Header */
+#catalog-side-panel .catalog-header,
 #catalog-side-panel .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 4px 16px 24px;
-    box-sizing: border-box;
-    flex-shrink: 0;
+  padding: 12px 14px 12px 16px;
+  border-bottom: 1px solid var(--catalog-border);
+  background-color: var(--catalog-header-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 52px;
+  box-sizing: border-box;
 }
 
+.catalog-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.catalog-title {
+  font-family: var(--catalog-font-family);
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--catalog-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.15px;
+  margin: 0;
+}
+
+.catalog-toc-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background-color: var(--catalog-badge-bg);
+  color: var(--catalog-badge-text);
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.catalog-toc-badge:empty,
+.catalog-toc-badge.is-hidden {
+  display: none;
+}
+
+.catalog-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--catalog-btn-color);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.catalog-close-btn:hover {
+  background-color: var(--catalog-btn-hover-bg);
+  color: var(--catalog-btn-hover-color);
+}
+
+.catalog-close-btn:focus-visible {
+  outline: 2px solid var(--catalog-primary);
+  outline-offset: 1px;
+}
+
+/* Scroll area and custom scrollbar */
 #catalog-side-panel .settings-items-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+#catalog-side-panel .settings-items-wrapper::-webkit-scrollbar,
+#catalog-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+#catalog-side-panel .settings-items-wrapper::-webkit-scrollbar-track,
+#catalog-list-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#catalog-side-panel .settings-items-wrapper::-webkit-scrollbar-thumb,
+#catalog-list-container::-webkit-scrollbar-thumb {
+  background-color: var(--catalog-scrollbar-thumb);
+  border-radius: 10px;
+}
+
+#catalog-side-panel .settings-items-wrapper:hover::-webkit-scrollbar-thumb,
+#catalog-list-container:hover::-webkit-scrollbar-thumb {
+  background-color: var(--catalog-scrollbar-hover);
 }
 
 #catalog-list-container {
-    padding: 8px 0;
-    box-sizing: border-box;
+  padding: 8px 6px;
+  box-sizing: border-box;
 }
 
 /*
- * 4. Catalog List Item Styles
+ * Catalog List Item Styles (Material Design 3 tile layout)
  */
 .catalog-list-item {
-    padding: 8px 24px;
-    cursor: pointer;
-    transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-    display: flex;
-    align-items: center;
-    min-height: 48px;
-    box-sizing: border-box;
+  margin: 2px 4px 4px 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--catalog-text-primary);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.25s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
+  box-sizing: border-box;
 }
 
 .catalog-list-item:hover,
 .catalog-list-item:focus {
-    background-color: rgba(0, 0, 0, 0.04);
-    outline: none;
+  background-color: var(--catalog-item-hover);
+  outline: none;
 }
 
+/* Active / Selected Item */
 .catalog-list-item.catalog-item-selected {
-    background-color: #edf2fa;
+  background-color: var(--catalog-item-active-bg) !important;
+  color: var(--catalog-text-primary);
+}
+
+.catalog-list-item.catalog-item-selected:hover {
+  background-color: var(--catalog-item-active-bg) !important;
+}
+
+/* Leading Slot: Turn Number Badge or Indentation Spacer */
+.catalog-item-leading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  min-width: 22px;
+  height: 20px;
+}
+
+.catalog-turn-badge {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background-color: var(--catalog-badge-bg);
+  color: var(--catalog-badge-text);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  box-sizing: border-box;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.catalog-list-item.catalog-item-selected .catalog-turn-badge {
+  background-color: var(--catalog-badge-active-bg);
+  color: var(--catalog-badge-active-text);
+}
+
+/* Content Area */
+.catalog-item-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .catalog-prompt-text {
-    font-family: "Google Sans Text", "Helvetica Neue", sans-serif;
-    font-size: 14px;
-    line-height: 20px;
-    color: #1f1f1f;
-    word-break: break-word;
-    flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  font-family: var(--catalog-font-family);
+  font-size: 13.5px;
+  line-height: 1.42;
+  color: var(--catalog-text-primary);
 }
 
-.catalog-image-prompt {
-    color: #5f6368;
-    font-style: italic;
+/* Inline Attachment Icons */
+.catalog-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  margin-right: 5px;
+  vertical-align: -3px;
+  flex-shrink: 0;
 }
+
+.catalog-inline-icon svg {
+  display: block;
+}
+
+.catalog-icon-image { background-color: var(--catalog-icon-image-bg); color: var(--catalog-icon-image-color); }
+.catalog-icon-folder { background-color: var(--catalog-icon-folder-bg); color: var(--catalog-icon-folder-color); }
+.catalog-icon-code { background-color: var(--catalog-icon-code-bg); color: var(--catalog-icon-code-color); }
+.catalog-icon-pdf { background-color: var(--catalog-icon-pdf-bg); color: var(--catalog-icon-pdf-color); }
+.catalog-icon-table { background-color: var(--catalog-icon-table-bg); color: var(--catalog-icon-table-color); }
+.catalog-icon-text { background-color: var(--catalog-icon-text-bg); color: var(--catalog-icon-text-color); }
+.catalog-icon-audio { background-color: var(--catalog-icon-audio-bg); color: var(--catalog-icon-audio-color); }
+.catalog-icon-video { background-color: var(--catalog-icon-video-bg); color: var(--catalog-icon-video-color); }
+.catalog-icon-archive { background-color: var(--catalog-icon-archive-bg); color: var(--catalog-icon-archive-color); }
+.catalog-icon-file { background-color: var(--catalog-icon-file-bg); color: var(--catalog-icon-file-color); }
+
+/* Dynamic Type Tags */
+.catalog-type-tag {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.catalog-type-tag-folder { color: var(--catalog-icon-folder-color); }
+.catalog-type-tag-image { color: var(--catalog-icon-image-color); }
+.catalog-type-tag-code { color: var(--catalog-icon-code-color); }
+.catalog-type-tag-pdf { color: var(--catalog-icon-pdf-color); }
+.catalog-type-tag-table { color: var(--catalog-icon-table-color); }
+.catalog-type-tag-text { color: var(--catalog-icon-text-color); }
+.catalog-type-tag-audio { color: var(--catalog-icon-audio-color); }
+.catalog-type-tag-video { color: var(--catalog-icon-video-color); }
+.catalog-type-tag-archive { color: var(--catalog-icon-archive-color); }
+.catalog-type-tag-file { color: var(--catalog-icon-file-color); }
 
 /*
- * 5. Catalog Empty State
+ * Catalog Empty State
  */
 .catalog-empty-state {
-    padding: 24px;
-    text-align: center;
-    color: #5f6368;
-    font-family: "Google Sans Text", "Helvetica Neue", sans-serif;
-    font-size: 14px;
-    line-height: 20px;
+  padding: 48px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--catalog-text-tertiary);
+  cursor: default;
+}
+
+.catalog-empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--catalog-badge-bg);
+  color: var(--catalog-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.catalog-empty-title {
+  font-family: var(--catalog-font-family);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--catalog-text-primary);
+}
+
+.catalog-empty-desc {
+  font-family: var(--catalog-font-family);
+  font-size: 12px;
+  color: var(--catalog-text-tertiary);
+  line-height: 1.4;
+  max-width: 200px;
 }
 
 /*
- * 6. Floating Scroll to Bottom Button
+ * Floating Scroll to Bottom Button
  */
 #scroll-to-bottom-btn {
-    position: fixed;
-    bottom: 120px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 999;
-    color: #444746;
-    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.15s;
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--catalog-container-bg);
+  border: 1px solid var(--catalog-border);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 999;
+  color: var(--catalog-btn-color);
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out, background-color 0.15s;
 }
 
 #scroll-to-bottom-btn:hover {
-    background-color: #f0f4f9;
-    color: #1a73e8;
+  background-color: var(--catalog-btn-hover-bg);
+  color: var(--catalog-btn-hover-color);
 }
 
 #scroll-to-bottom-btn.button-hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateX(-50%) translateY(10px);
-    transition: opacity 50ms ease-out, transform 50ms ease-out; /* Hide instantly/very fast */
-}
-#scroll-to-bottom-btn .material-symbols-outlined {
-    font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(10px);
+  transition: opacity 50ms ease-out, transform 50ms ease-out;
 }
 
+#scroll-to-bottom-btn .material-symbols-outlined {
+  font-size: 12px;
+}

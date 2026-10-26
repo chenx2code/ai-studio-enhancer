@@ -11,52 +11,304 @@
   let nativePanelObserver = null;
   let currentlyObservedNativePanel = null;
 
+  let scrollSpyBound = false;
+
+  // Classify file type into one of 10 granular categories (or fallback 'file')
+  function detectFileCategory(fileType, fileName, isFolder) {
+    if (isFolder || (fileType && fileType.toLowerCase() === 'folder')) {
+      return 'folder';
+    }
+
+    const ext = (fileType || '').toLowerCase();
+    const name = (fileName || '').toLowerCase();
+
+    if (ext === 'pdf' || name.endsWith('.pdf')) {
+      return 'pdf';
+    }
+
+    const codeExts = [
+      'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'htm', 'css', 'scss', 'sass',
+      'json', 'yaml', 'yml', 'xml', 'sql', 'sh', 'bash', 'zsh', 'c', 'cpp',
+      'cc', 'cxx', 'h', 'hpp', 'java', 'go', 'rs', 'php', 'rb', 'swift',
+      'kt', 'kts', 'dart', 'scala', 'r', 'lua', 'vue', 'svelte'
+    ];
+    if (codeExts.includes(ext) || codeExts.some((ce) => name.endsWith('.' + ce))) {
+      return 'code';
+    }
+
+    const tableExts = ['csv', 'xlsx', 'xls', 'tsv', 'parquet', 'feather', 'ods'];
+    if (tableExts.includes(ext) || tableExts.some((te) => name.endsWith('.' + te))) {
+      return 'table';
+    }
+
+    const textExts = ['md', 'markdown', 'txt', 'rtf', 'log', 'doc', 'docx', 'odt', 'tex'];
+    if (textExts.includes(ext) || textExts.some((te) => name.endsWith('.' + te))) {
+      return 'text';
+    }
+
+    const audioExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'opus', 'wma'];
+    if (audioExts.includes(ext) || audioExts.some((ae) => name.endsWith('.' + ae)) || ext === 'audio') {
+      return 'audio';
+    }
+
+    const videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi', 'flv', 'wmv'];
+    if (videoExts.includes(ext) || videoExts.some((ve) => name.endsWith('.' + ve)) || ext === 'video' || ext === 'youtube') {
+      return 'video';
+    }
+
+    const archiveExts = ['zip', 'tar', 'gz', 'tgz', 'rar', '7z', 'bz2', 'xz'];
+    if (archiveExts.includes(ext) || archiveExts.some((ae) => name.endsWith('.' + ae))) {
+      return 'archive';
+    }
+
+    const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'tiff'];
+    if (imageExts.includes(ext) || imageExts.some((ie) => name.endsWith('.' + ie)) || ext === 'image') {
+      return 'image';
+    }
+
+    return 'file';
+  }
+
+  // Get SVG markup for a given attachment category
+  function getAttachmentIconSvg(category) {
+    switch (category) {
+      case 'folder':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+      case 'code':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>';
+      case 'pdf':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9.5 8.5c0 .83-.67 1.5-1.5 1.5H7v2H5.5V8H8c.83 0 1.5.67 1.5 1.5v2zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V8H13c.83 0 1.5.67 1.5 1.5v4zm4-3.5H17v1h1.5v1.5H17v2h-1.5V8h3v1.5z"/></svg>';
+      case 'table':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 7h14v2H5V7zm0 4h6v8H5v-8zm14 8h-6v-8h6v8z"/></svg>';
+      case 'text':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>';
+      case 'audio':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+      case 'video':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-10 12.5v-9l6 4.5-6 4.5z"/></svg>';
+      case 'archive':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10h-2v-2h2v2zm0-4h-2v-2h2v2zm-2-4V6h2v2h-2z"/></svg>';
+      case 'image':
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+      case 'file':
+      default:
+        return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>';
+    }
+  }
+
+  // Extract attachments for a turn from live DOM elements and API turn data
+  function extractAttachments(turn, turnEl) {
+    const attachments = [];
+    const seenSignatures = new Set();
+
+    // 1. DOM extraction if turnEl is present in viewport / DOM
+    if (turnEl) {
+      // Images in user turn (excluding avatars and profile icons)
+      const images = Array.from(turnEl.querySelectorAll('img')).filter((img) => {
+        if (img.classList.contains('user-icon') || img.classList.contains('avatar') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+          return false;
+        }
+        return true;
+      });
+
+      images.forEach((img, idx) => {
+        const alt = (img.getAttribute('alt') || '').trim();
+        const fName = alt || (images.length > 1 ? `${chrome.i18n.getMessage('imageLabel') || 'Image'} ${idx + 1}` : (chrome.i18n.getMessage('imageLabel') || 'Image'));
+        const sig = `image:${fName}`;
+        if (!seenSignatures.has(sig)) {
+          seenSignatures.add(sig);
+          attachments.push({
+            type: 'image',
+            fileCategory: 'image',
+            fileType: 'IMG',
+            fileName: fName
+          });
+        }
+      });
+
+      // File elements / chips in user turn (e.g. file chips, attachment buttons, download links)
+      const fileElements = Array.from(turnEl.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], [data-test-id*="file"]')).filter((el) => {
+        return el.textContent && el.textContent.trim().length > 0 && !el.querySelector('[class*="file"], [class*="chip"]');
+      });
+
+      fileElements.forEach((fel) => {
+        const rawText = fel.textContent.trim();
+        const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+        const fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
+        if (fName && fName.length < 150 && !fName.toLowerCase().includes('run settings')) {
+          const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
+          let fileType = extMatch ? extMatch[1].toUpperCase() : 'File';
+          const isFolder = fName.toLowerCase().includes('folder');
+          const category = detectFileCategory(fileType, fName, isFolder);
+          const sig = `file:${fName}`;
+          if (!seenSignatures.has(sig)) {
+            seenSignatures.add(sig);
+            attachments.push({
+              type: 'file',
+              fileCategory: category,
+              fileType: fileType,
+              fileName: fName
+            });
+          }
+        }
+      });
+    }
+
+    // 2. Fallback / supplement from API turn data if no DOM attachments extracted
+    if (attachments.length === 0 && Array.isArray(turn)) {
+      const imageContent = turn[1];
+      const cloudFileContent = turn[3];
+      const inlineContent = turn[12];
+      const youtubeContent = turn[13];
+      const docContent = turn[23];
+
+      if ((imageContent && Array.isArray(imageContent) && imageContent.length > 0) ||
+          (inlineContent && Array.isArray(inlineContent) && inlineContent.length > 0)) {
+        attachments.push({
+          type: 'image',
+          fileCategory: 'image',
+          fileType: 'IMG',
+          fileName: chrome.i18n.getMessage('imageLabel') || 'Image'
+        });
+      }
+
+      if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
+        attachments.push({
+          type: 'video',
+          fileCategory: 'video',
+          fileType: 'Video',
+          fileName: 'YouTube Video'
+        });
+      }
+
+      if (docContent && Array.isArray(docContent) && docContent.length > 0) {
+        const mimeOrName = docContent[0] || '';
+        let fileName = (docContent[1] && typeof docContent[1] === 'string' && docContent[1].length < 150) ? docContent[1] : '';
+        const friendlyType = Utils.getFriendlyFileType(mimeOrName);
+        let tag = friendlyType === 'Markdown' ? 'MD' : (friendlyType === 'Document' ? 'DOC' : friendlyType.toUpperCase());
+        const category = detectFileCategory(tag, fileName || mimeOrName, false);
+        if (!fileName) {
+          fileName = `${friendlyType} ${chrome.i18n.getMessage('fileLabel') || 'File'}`;
+        }
+        attachments.push({
+          type: 'file',
+          fileCategory: category,
+          fileType: tag,
+          fileName: fileName
+        });
+      }
+
+      if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0) {
+        attachments.push({
+          type: 'file',
+          fileCategory: 'pdf',
+          fileType: 'PDF',
+          fileName: `PDF ${chrome.i18n.getMessage('fileLabel') || 'File'}`
+        });
+      }
+    }
+
+    return attachments;
+  }
+
   function extractUserPrompts(conversationTurns) {
     if (!Array.isArray(conversationTurns)) {
       return [];
     }
     const userPrompts = [];
-    const userTurnElementIds = [];
+    const userTurnElements = [];
     const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
     for (const chatTurn of chatTurns) {
       const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
       if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        userTurnElementIds.push(chatTurn.id);
+        userTurnElements.push(chatTurn);
       }
     }
+
+    let turnCounter = 0;
+    let userTurnIdx = 0;
 
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
       if (role === 'user') {
-        const textContent = turn[0] || '';
-        let promptText = '';
-        let contentType = 'text';
+        turnCounter++;
+        const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
+        const textContent = (turn[0] || '').trim();
+        const turnElement = userTurnElements[userTurnIdx] || null;
+        const turnElementId = turnElement ? turnElement.id : null;
+        userTurnIdx++;
 
-        if (textContent && textContent.trim()) {
-          promptText = textContent.trim();
-          contentType = 'text';
+        const attachments = extractAttachments(turn, turnElement);
+
+        if (textContent) {
+          // A. Turn has text: text row is turn root
+          userPrompts.push({
+            turnCounter: turnCounter,
+            turnBadge: badgeStr,
+            isTurnRoot: true,
+            type: 'text',
+            turnIndex: index,
+            turnElementId: turnElementId,
+            promptText: textContent,
+            displayText: textContent,
+            truncatedText: Utils.truncateText(textContent, 50),
+            role: role
+          });
+
+          // Attachments become subsequent rows in the same turn (isTurnRoot: false)
+          attachments.forEach((att, attIdx) => {
+            userPrompts.push({
+              turnCounter: turnCounter,
+              turnBadge: '',
+              isTurnRoot: false,
+              type: att.type,
+              fileCategory: att.fileCategory,
+              fileType: att.fileType,
+              fileName: att.fileName,
+              turnIndex: index,
+              turnElementId: turnElementId,
+              promptText: `[${att.fileType}] ${att.fileName}`,
+              displayText: att.fileName,
+              subIndex: attIdx,
+              role: role
+            });
+          });
+        } else if (attachments.length > 0) {
+          // B. Turn has NO text, but has attachments: first attachment is turn root
+          attachments.forEach((att, attIdx) => {
+            const isRoot = attIdx === 0;
+            userPrompts.push({
+              turnCounter: turnCounter,
+              turnBadge: isRoot ? badgeStr : '',
+              isTurnRoot: isRoot,
+              type: att.type,
+              fileCategory: att.fileCategory,
+              fileType: att.fileType,
+              fileName: att.fileName,
+              turnIndex: index,
+              turnElementId: turnElementId,
+              promptText: `[${att.fileType}] ${att.fileName}`,
+              displayText: att.fileName,
+              subIndex: attIdx,
+              role: role
+            });
+          });
         } else {
-          const attachment = Utils.getAttachmentPlaceholder(turn);
-          if (attachment) {
-            promptText = attachment.text;
-            contentType = attachment.type;
-          } else {
-            promptText = '[File]';
-            contentType = 'file';
-          }
+          // C. Fallback: empty turn
+          userPrompts.push({
+            turnCounter: turnCounter,
+            turnBadge: badgeStr,
+            isTurnRoot: true,
+            type: 'text',
+            turnIndex: index,
+            turnElementId: turnElementId,
+            promptText: '[Prompt]',
+            displayText: '[Prompt]',
+            truncatedText: '[Prompt]',
+            role: role
+          });
         }
-
-        let turnElementId = userTurnElementIds[userPrompts.length] || null;
-
-        userPrompts.push({
-          turnIndex: index,
-          turnElementId: turnElementId,
-          promptText: promptText,
-          truncatedText: Utils.truncateText(promptText, 50),
-          contentType: contentType,
-          role: role
-        });
       }
     });
     return userPrompts;
@@ -73,7 +325,9 @@
       } else {
         for (let i = 0; i < newData.length; i++) {
           if (newData[i].promptText !== oldData[i].promptText || 
-              newData[i].turnElementId !== oldData[i].turnElementId) {
+              newData[i].turnElementId !== oldData[i].turnElementId ||
+              newData[i].turnBadge !== oldData[i].turnBadge ||
+              newData[i].fileName !== oldData[i].fileName) {
             isDifferent = true;
             break;
           }
@@ -663,6 +917,86 @@
     }
   }
 
+  function updateActiveTurnHighlight(turnIndex) {
+    const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
+    if (!list) return;
+
+    const items = list.querySelectorAll('.catalog-list-item');
+    items.forEach((item) => {
+      const idx = item.getAttribute('data-turn-index');
+      if (idx !== null && parseInt(idx, 10) === turnIndex) {
+        item.classList.add('catalog-item-selected');
+      } else {
+        item.classList.remove('catalog-item-selected');
+      }
+    });
+  }
+
+  function updateActiveTurnByViewport() {
+    if (isNavigating) return;
+
+    const scroller = getChatScrollContainer();
+    if (!scroller) return;
+
+    const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
+    const userTurns = chatTurns.filter((turn) => {
+      const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+      return container && container.classList.contains(Utils.SELECTORS.class.userTurn);
+    });
+
+    if (userTurns.length === 0) return;
+
+    const scrollerRect = scroller.getBoundingClientRect();
+    let activeTurnEl = null;
+
+    for (let i = 0; i < userTurns.length; i++) {
+      const rect = userTurns[i].getBoundingClientRect();
+      if (rect.top <= scrollerRect.top + 250) {
+        activeTurnEl = userTurns[i];
+      } else {
+        break;
+      }
+    }
+
+    if (!activeTurnEl && userTurns.length > 0) {
+      activeTurnEl = userTurns[0];
+    }
+    if (!activeTurnEl) return;
+
+    const catalogData = State.getCatalogData();
+    if (!catalogData || catalogData.length === 0) return;
+
+    let targetCatalogItem = null;
+    if (activeTurnEl.id) {
+      targetCatalogItem = catalogData.find(item => item.turnElementId === activeTurnEl.id);
+    }
+    if (!targetCatalogItem) {
+      const text = getCleanPromptText(activeTurnEl);
+      if (text) {
+        targetCatalogItem = catalogData.find(item => item.promptText === text || text.includes(item.promptText) || item.promptText.includes(text));
+      }
+    }
+
+    if (targetCatalogItem) {
+      updateActiveTurnHighlight(targetCatalogItem.turnIndex);
+    }
+  }
+
+  function setupScrollSpy() {
+    if (scrollSpyBound) return;
+    const scroller = getChatScrollContainer();
+    if (!scroller) return;
+
+    scrollSpyBound = true;
+    let scrollTimer = null;
+    scroller.addEventListener('scroll', () => {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        updateActiveTurnByViewport();
+      }, 100);
+    }, { passive: true });
+  }
+
   function createCatalogPanel() {
     const panel = document.createElement('ms-right-side-panel');
     panel.id = Utils.SELECTORS.id.catalogPanel;
@@ -671,28 +1005,21 @@
     contentContainer.className = 'content-container';
 
     const header = document.createElement('div');
-    header.className = Utils.SELECTORS.class.nativePanelHeader;
+    header.className = 'catalog-header header';
+    header.innerHTML = `
+      <div class="catalog-title-group">
+        <span class="catalog-title">${chrome.i18n.getMessage('catalogHeader')}</span>
+        <span id="catalog-toc-badge" class="catalog-toc-badge is-hidden">0</span>
+      </div>
+      <button class="catalog-close-btn" title="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}" aria-label="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+        </svg>
+      </button>
+    `;
 
-    const title = document.createElement('h2');
-    title.className = Utils.SELECTORS.class.nativePanelTitle;
-    title.textContent = chrome.i18n.getMessage('catalogHeader');
-
-    const closeButton = document.createElement('button');
-    closeButton.setAttribute('ms-button', '');
-    closeButton.setAttribute('variant', 'icon-borderless');
-    closeButton.setAttribute('size', 'small');
-    closeButton.setAttribute('iconname', 'close');
-    closeButton.setAttribute('aria-label', 'Close catalog panel');
-    closeButton.addEventListener('click', () => toggleCatalog(false));
-
-    const closeIcon = document.createElement('span');
-    closeIcon.className = Utils.SELECTORS.class.nativeMaterialIcon;
-    closeIcon.textContent = 'close';
-    closeIcon.setAttribute('aria-hidden', 'true');
-    closeButton.appendChild(closeIcon);
-
-    header.appendChild(title);
-    header.appendChild(closeButton);
+    const closeBtn = header.querySelector('.catalog-close-btn');
+    closeBtn.addEventListener('click', () => toggleCatalog(false));
 
     const settingsWrapper = document.createElement('div');
     settingsWrapper.className = Utils.SELECTORS.class.nativeSettingsWrapper;
@@ -717,23 +1044,52 @@
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
     listItem.setAttribute('role', 'button');
     listItem.setAttribute('tabindex', '0');
-
-    const promptText = document.createElement('span');
-    promptText.className = 'catalog-prompt-text';
-
-    if (catalogItem.contentType === 'text') {
-      promptText.textContent = catalogItem.truncatedText;
-    } else {
-      promptText.textContent = catalogItem.promptText;
-      promptText.classList.add('catalog-image-prompt');
+    if (catalogItem.isTurnRoot) {
+      listItem.setAttribute('data-is-turn-root', 'true');
     }
 
-    listItem.appendChild(promptText);
+    // 1. Leading Slot: Turn Number Badge (for turn root) or blank indentation spacer (for attachments)
+    const leading = document.createElement('div');
+    leading.className = 'catalog-item-leading';
+    if (catalogItem.isTurnRoot && catalogItem.turnBadge) {
+      leading.innerHTML = `<span class="catalog-turn-badge">${catalogItem.turnBadge}</span>`;
+    }
+    listItem.appendChild(leading);
+
+    // 2. Text Content Area: Prompt text or attachment with icon aligned with prompt text
+    const content = document.createElement('div');
+    content.className = 'catalog-item-content';
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'catalog-prompt-text';
+
+    if (catalogItem.type === 'text') {
+      textSpan.textContent = catalogItem.promptText;
+      textSpan.title = catalogItem.promptText;
+    } else {
+      const category = catalogItem.fileCategory || 'file';
+      const fileType = catalogItem.fileType || 'File';
+      const fileName = catalogItem.fileName || fileType;
+
+      const iconSpan = document.createElement('span');
+      iconSpan.className = `catalog-inline-icon catalog-icon-${category}`;
+      iconSpan.innerHTML = getAttachmentIconSvg(category);
+      textSpan.appendChild(iconSpan);
+
+      const tagSpan = document.createElement('span');
+      tagSpan.className = `catalog-type-tag catalog-type-tag-${category}`;
+      tagSpan.textContent = `[${fileType}]`;
+      textSpan.appendChild(tagSpan);
+
+      textSpan.appendChild(document.createTextNode(' ' + fileName));
+      textSpan.title = `[${fileType}] ${fileName}`;
+    }
+
+    content.appendChild(textSpan);
+    listItem.appendChild(content);
 
     listItem.addEventListener('click', function () {
-      const allItems = document.querySelectorAll('.catalog-list-item');
-      allItems.forEach(item => item.classList.remove('catalog-item-selected'));
-      listItem.classList.add('catalog-item-selected');
+      updateActiveTurnHighlight(catalogItem.turnIndex);
       navigateToPrompt(catalogItem.turnIndex);
     });
 
@@ -752,12 +1108,33 @@
     const catalogData = State.getCatalogData();
     if (!listContainer) return;
     
+    // Update header turn count badge
+    const badge = document.getElementById('catalog-toc-badge');
+    if (badge) {
+      if (catalogData && catalogData.length > 0) {
+        const uniqueTurns = new Set(catalogData.map(item => item.turnIndex)).size;
+        badge.textContent = String(uniqueTurns);
+        badge.classList.remove('is-hidden');
+      } else {
+        badge.textContent = '0';
+        badge.classList.add('is-hidden');
+      }
+    }
+
     listContainer.innerHTML = '';
 
     if (!catalogData || catalogData.length === 0) {
       const emptyState = document.createElement('div');
       emptyState.className = 'catalog-empty-state';
-      emptyState.textContent = chrome.i18n.getMessage('catalogEmptyState');
+      emptyState.innerHTML = `
+        <div class="catalog-empty-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+            <path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/>
+          </svg>
+        </div>
+        <div class="catalog-empty-title">${chrome.i18n.getMessage('catalogEmptyTitle') || 'No conversation yet'}</div>
+        <div class="catalog-empty-desc">${chrome.i18n.getMessage('catalogEmptyDesc') || 'Prompts will appear here automatically'}</div>
+      `;
       listContainer.appendChild(emptyState);
       return;
     }
@@ -766,6 +1143,8 @@
       const listItem = createPromptListItem(catalogItem);
       listContainer.appendChild(listItem);
     });
+
+    updateActiveTurnByViewport();
   }
 
   function toggleCatalog(forceShow) {
@@ -779,6 +1158,7 @@
     if (shouldShow === isVisible) return;
 
     if (shouldShow) {
+      setupScrollSpy();
       renderPromptList();
     }
 
