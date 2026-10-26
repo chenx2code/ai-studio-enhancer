@@ -210,15 +210,238 @@
     }
   }
 
+  let activeNavigationCancel = null;
+  let isNavigating = false;
+
+  // Retrieve the primary scrollable container for AI Studio chat history
+  function getChatScrollContainer() {
+    const turn = document.querySelector(Utils.SELECTORS.query.chatTurn) || document.querySelector(Utils.SELECTORS.query.chunkEditor);
+    if (turn) {
+      let p = turn.parentElement;
+      while (p && p !== document.body) {
+        const s = window.getComputedStyle(p);
+        if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight) {
+          return p;
+        }
+        p = p.parentElement;
+      }
+    }
+
+    const chunkEditor = document.querySelector(Utils.SELECTORS.query.chunkEditor);
+    if (chunkEditor) {
+      const s = window.getComputedStyle(chunkEditor);
+      if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && chunkEditor.scrollHeight > chunkEditor.clientHeight) {
+        return chunkEditor;
+      }
+      for (const child of chunkEditor.children) {
+        if (child.id === Utils.SELECTORS.id.catalogPanel) continue;
+        const cs = window.getComputedStyle(child);
+        if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && child.scrollHeight > child.clientHeight) {
+          return child;
+        }
+      }
+      const mainContent = Array.from(chunkEditor.children).find(
+        child => child.id !== Utils.SELECTORS.id.catalogPanel && child.tagName !== 'STYLE' && !child.classList.contains('custom-tooltip-text')
+      );
+      if (mainContent) return mainContent;
+      return chunkEditor;
+    }
+
+    if (document.documentElement.scrollHeight > document.documentElement.clientHeight) {
+      return document.documentElement;
+    }
+    return document.body;
+  }
+
+  function getChatMainContainer() {
+    return getChatScrollContainer();
+  }
+
+  // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation
+  function animateScrollTo(scroller, targetTop, duration, onComplete) {
+    if (!scroller) return () => {};
+
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const boundedTarget = Math.max(0, Math.min(maxScroll, Math.round(targetTop)));
+    const startTop = scroller.scrollTop;
+    const distance = boundedTarget - startTop;
+
+    if (Math.abs(distance) < 2) {
+      scroller.scrollTop = boundedTarget;
+      if (onComplete) onComplete();
+      return () => {};
+    }
+
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+    const startTime = performance.now();
+    let rafId = null;
+    let isCanceled = false;
+
+    const tick = (currentTime) => {
+      if (isCanceled) return;
+
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const easedProgress = easeOutCubic(progress);
+
+      scroller.scrollTop = Math.round(startTop + distance * easedProgress);
+
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        scroller.scrollTop = boundedTarget;
+        if (onComplete) onComplete();
+      }
+    };
+
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      isCanceled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
+  }
+
+  // Extract clean normalized prompt text from a chat turn element
+  function getCleanPromptText(turnEl) {
+    if (!turnEl) return '';
+    const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
+    return (container.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Infer catalog item index corresponding to a rendered DOM turn
+  function inferCatalogIndex(turnEl, catalogData) {
+    if (!turnEl || !catalogData || catalogData.length === 0) return -1;
+    const text = getCleanPromptText(turnEl);
+    if (!text) return -1;
+
+    for (let i = 0; i < catalogData.length; i++) {
+      const itemText = (catalogData[i].promptText || '').replace(/\s+/g, ' ').trim();
+      if (itemText && (itemText === text || itemText.startsWith(text.slice(0, 30)) || text.startsWith(itemText.slice(0, 30)))) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  // Locate the target DOM ms-chat-turn element for a given catalog item
+  function findTargetElement(catalogItem) {
+    if (!catalogItem) return null;
+
+    // Tier 1: ID Match (if element has valid ID)
+    if (catalogItem.turnElementId) {
+      const el = document.getElementById(catalogItem.turnElementId);
+      if (el) return el;
+    }
+
+    const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
+    if (chatTurns.length === 0) return null;
+
+    const userTurns = [];
+    chatTurns.forEach((turn, index) => {
+      const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
+        userTurns.push({ element: turn, domIndex: index });
+      }
+    });
+
+    if (userTurns.length === 0) return null;
+
+    const targetText = (catalogItem.promptText || '').replace(/\s+/g, ' ').trim();
+
+    // Helper to pick closest candidate if multiple matches exist
+    const pickClosestTurn = (matches) => {
+      const catalogData = State.getCatalogData() || [];
+      const catalogIndex = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
+      const targetRatio = catalogIndex >= 0 ? catalogIndex / Math.max(1, catalogData.length - 1) : 0;
+      const expectedDomIndex = Math.round(targetRatio * (userTurns.length - 1));
+
+      let best = matches[0].element;
+      let minDiff = Infinity;
+      for (const m of matches) {
+        const idx = userTurns.findIndex(u => u.element === m.element);
+        const diff = Math.abs(idx - expectedDomIndex);
+        if (diff < minDiff) {
+          minDiff = diff;
+          best = m.element;
+        }
+      }
+      return best;
+    };
+
+    // Tier 2: Text Matching
+    if (targetText && targetText !== '[File]' && targetText !== '[Image]' && targetText !== '[Document]') {
+      // 2a. Exact match
+      const exactMatches = userTurns.filter(t => getCleanPromptText(t.element) === targetText);
+      if (exactMatches.length === 1) {
+        return exactMatches[0].element;
+      } else if (exactMatches.length > 1) {
+        return pickClosestTurn(exactMatches);
+      }
+
+      // 2b. Prefix match (first 25 characters)
+      const prefix = targetText.slice(0, 25);
+      if (prefix.length >= 5) {
+        const prefixMatches = userTurns.filter(t => {
+          const tText = getCleanPromptText(t.element);
+          return tText.startsWith(prefix) || prefix.startsWith(tText.slice(0, 25));
+        });
+        if (prefixMatches.length === 1) {
+          return prefixMatches[0].element;
+        } else if (prefixMatches.length > 1) {
+          return pickClosestTurn(prefixMatches);
+        }
+      }
+
+      // 2c. Substring overlap match
+      let bestCandidate = null;
+      let maxOverlap = 0;
+      for (const t of userTurns) {
+        const tText = getCleanPromptText(t.element);
+        if (!tText) continue;
+        let overlap = 0;
+        const minLen = Math.min(tText.length, targetText.length);
+        while (overlap < minLen && tText[overlap] === targetText[overlap]) {
+          overlap++;
+        }
+        if (overlap > 10 && overlap > maxOverlap) {
+          maxOverlap = overlap;
+          bestCandidate = t.element;
+        }
+      }
+      if (bestCandidate) return bestCandidate;
+    }
+
+    // Tier 3: Index match fallback when all turns are fully rendered
+    const catalogData = State.getCatalogData() || [];
+    const catalogIndex = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
+    if (catalogIndex >= 0 && catalogData.length === userTurns.length) {
+      return userTurns[catalogIndex].element;
+    }
+
+    return null;
+  }
+
   function highlightElement(element) {
+    if (!element) return;
+    element.classList.remove('catalog-target-highlight');
+    // Trigger reflow to restart CSS animation
+    void element.offsetWidth;
+    element.classList.add('catalog-target-highlight');
+
     const originalBackground = element.style.backgroundColor;
     const originalTransition = element.style.transition;
     element.style.transition = 'background-color 0.3s ease';
     element.style.backgroundColor = 'rgba(66, 133, 244, 0.1)';
+
     setTimeout(() => {
       element.style.backgroundColor = originalBackground;
       setTimeout(() => {
         element.style.transition = originalTransition;
+        element.classList.remove('catalog-target-highlight');
       }, Utils.CONSTANTS.HIGHLIGHT_FADE_OUT_MS);
     }, Utils.CONSTANTS.HIGHLIGHT_DURATION_MS);
   }
@@ -229,32 +452,158 @@
       const catalogItem = catalogData.find(item => item.turnIndex === turnIndex);
       if (!catalogItem) return;
 
-      if (catalogItem.turnElementId) {
-        const targetElement = document.getElementById(catalogItem.turnElementId);
-        if (targetElement) {
-          targetElement.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
-          highlightElement(targetElement);
-          return;
-        }
+      const scroller = getChatScrollContainer();
+      if (!scroller) return;
+
+      // 1. Cancel active animation
+      if (activeNavigationCancel) {
+        activeNavigationCancel();
+        activeNavigationCancel = null;
       }
 
-      const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-      if (chatTurns.length === 0) return;
+      isNavigating = true;
 
+      // 2. User interrupt handler: abort auto-navigation on manual interaction
+      const onUserInterrupt = (e) => {
+        if (e.target && e.target.closest && e.target.closest('#' + Utils.SELECTORS.id.catalogPanel)) {
+          return;
+        }
+        cleanup();
+      };
+
+      const cleanup = () => {
+        if (activeNavigationCancel) {
+          activeNavigationCancel();
+          activeNavigationCancel = null;
+        }
+        isNavigating = false;
+        window.removeEventListener('wheel', onUserInterrupt, { capture: true });
+        window.removeEventListener('touchstart', onUserInterrupt, { capture: true });
+        window.removeEventListener('keydown', onUserInterrupt, { capture: true });
+      };
+
+      window.addEventListener('wheel', onUserInterrupt, { capture: true, passive: true });
+      window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
+      window.addEventListener('keydown', onUserInterrupt, { capture: true, passive: true });
+
+      // Precision landing helper when target DOM element is available
+      const landOnTarget = (targetEl) => {
+        if (!targetEl) {
+          cleanup();
+          return;
+        }
+
+        const targetRect = targetEl.getBoundingClientRect();
+        const scrollerRect = scroller.getBoundingClientRect();
+        const desiredTop = 80;
+
+        const delta = (targetRect.top - scrollerRect.top) - desiredTop;
+        const targetScrollTop = scroller.scrollTop + delta;
+        const distance = Math.abs(delta);
+
+        const duration = Math.min(520, Math.max(260, Math.round(200 + Math.sqrt(distance) * 4.2)));
+
+        activeNavigationCancel = animateScrollTo(scroller, targetScrollTop, duration, () => {
+          // Arrival check: micro-settle if layout shifted during flight
+          const freshTarget = findTargetElement(catalogItem) || targetEl;
+          const freshTargetRect = freshTarget.getBoundingClientRect();
+          const freshDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
+
+          if (Math.abs(freshDelta) > 15) {
+            activeNavigationCancel = animateScrollTo(scroller, scroller.scrollTop + freshDelta, 140, () => {
+              highlightElement(freshTarget);
+              cleanup();
+            });
+          } else {
+            highlightElement(freshTarget);
+            cleanup();
+          }
+        });
+      };
+
+      // Check if target is already in DOM
+      const initialTargetEl = findTargetElement(catalogItem);
+      if (initialTargetEl) {
+        landOnTarget(initialTargetEl);
+        return;
+      }
+
+      // Target not in DOM yet (virtualized): smooth hydration glide towards target's estimated location
+      const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
       const userTurns = [];
       chatTurns.forEach((turn, index) => {
         const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
         if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-          userTurns.push({ element: turn, domIndex: index });
+          userTurns.push(turn);
         }
       });
 
-      const catalogItemIndex = catalogData.findIndex(item => item.turnIndex === turnIndex);
-      if (catalogItemIndex >= 0 && catalogItemIndex < userTurns.length) {
-        const targetTurn = userTurns[catalogItemIndex];
-        targetTurn.element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
-        highlightElement(targetTurn.element);
+      let scrollUp = true;
+      if (userTurns.length > 0) {
+        const firstVisibleIdx = inferCatalogIndex(userTurns[0], catalogData);
+        const catalogItemIdx = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
+        if (firstVisibleIdx !== -1 && catalogItemIdx !== -1) {
+          scrollUp = catalogItemIdx < firstVisibleIdx;
+        } else {
+          scrollUp = scroller.scrollTop > 300;
+        }
+      } else {
+        scrollUp = scroller.scrollTop > 300;
       }
+
+      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const searchTarget = scrollUp ? 0 : maxScroll;
+      const searchDistance = Math.abs(searchTarget - scroller.scrollTop);
+      const searchDuration = Math.min(650, Math.max(320, Math.round(240 + Math.sqrt(searchDistance) * 4.5)));
+
+      let frameCount = 0;
+      const startTop = scroller.scrollTop;
+      const searchDelta = searchTarget - startTop;
+      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+      const searchStartTime = performance.now();
+      let searchRafId = null;
+
+      const searchStep = (currentTime) => {
+        frameCount++;
+        const elapsed = currentTime - searchStartTime;
+        const progress = Math.min(1, elapsed / searchDuration);
+        const easedProgress = easeOutCubic(progress);
+
+        scroller.scrollTop = Math.round(startTop + searchDelta * easedProgress);
+
+        // Check every 4 frames (~60ms) if target element has been hydrated into DOM
+        if (frameCount % 4 === 0) {
+          const foundEl = findTargetElement(catalogItem);
+          if (foundEl) {
+            cancelAnimationFrame(searchRafId);
+            searchRafId = null;
+            landOnTarget(foundEl);
+            return;
+          }
+        }
+
+        if (progress < 1) {
+          searchRafId = requestAnimationFrame(searchStep);
+        } else {
+          // Final check after boundary arrival
+          setTimeout(() => {
+            const finalFound = findTargetElement(catalogItem);
+            if (finalFound) {
+              landOnTarget(finalFound);
+            } else {
+              cleanup();
+            }
+          }, 80);
+        }
+      };
+
+      searchRafId = requestAnimationFrame(searchStep);
+      activeNavigationCancel = () => {
+        if (searchRafId !== null) {
+          cancelAnimationFrame(searchRafId);
+          searchRafId = null;
+        }
+      };
     } catch (error) {
       console.error('Error during navigation:', error);
     }
@@ -262,29 +611,27 @@
 
   function scrollToBottom() {
     try {
-      const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-      if (chatTurns.length > 0) {
-        const lastTurn = chatTurns[chatTurns.length - 1];
-        lastTurn.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+      const scroller = getChatScrollContainer();
+      if (!scroller) return;
+
+      if (activeNavigationCancel) {
+        activeNavigationCancel();
+        activeNavigationCancel = null;
       }
+
+      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const distance = Math.abs(maxScroll - scroller.scrollTop);
+      if (distance < 5) return;
+
+      const duration = Math.min(500, Math.max(220, Math.round(180 + Math.sqrt(distance) * 3.8)));
+      activeNavigationCancel = animateScrollTo(scroller, maxScroll, duration, () => {
+        activeNavigationCancel = null;
+      });
     } catch (error) {
       console.error('Error scrolling to bottom:', error);
     }
   }
 
-  function getChatMainContainer() {
-    const firstTurn = document.querySelector(Utils.SELECTORS.query.chatTurn);
-    if (firstTurn && firstTurn.parentElement) return firstTurn.parentElement;
-    const chunkEditor = document.querySelector(Utils.SELECTORS.query.chunkEditor);
-    if (chunkEditor) {
-      const mainContent = Array.from(chunkEditor.children).find(
-        child => child.id !== Utils.SELECTORS.id.catalogPanel && child.tagName !== 'STYLE' && !child.classList.contains('custom-tooltip-text')
-      );
-      if (mainContent) return mainContent;
-      return chunkEditor;
-    }
-    return null;
-  }
 
   function isOverlayActive() {
     const overlay = document.querySelector('.sidebar-overlay');
@@ -467,6 +814,7 @@
     toggleCatalog,
     scrollToBottom,
     getChatMainContainer,
+    getChatScrollContainer,
     updateScrollButtonPosition,
     updateScrollBtnOverlayVisibility,
     getCatalogVisible,

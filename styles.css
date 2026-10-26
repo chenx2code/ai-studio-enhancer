@@ -183,3 +183,25 @@
 #scroll-to-bottom-btn .material-symbols-outlined {
     font-size: 12px;
 }
+
+/*
+ * 7. Target Prompt Arrival Highlight
+ */
+@keyframes ai-studio-target-pulse {
+    0% {
+        outline: 2px solid #1a73e8;
+        outline-offset: 4px;
+        background-color: rgba(66, 133, 244, 0.12);
+    }
+    100% {
+        outline: 2px solid transparent;
+        outline-offset: 4px;
+        background-color: transparent;
+    }
+}
+
+.catalog-target-highlight {
+    animation: ai-studio-target-pulse 1.5s cubic-bezier(0.2, 0, 0, 1) forwards !important;
+    border-radius: 8px !important;
+}
+
