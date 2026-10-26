@@ -1,8 +1,14 @@
-[English](./README.md)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/chenx2code/ai-studio-enhancer/master/icons/icon128.png" width="100" alt="AI Studio Enhancer Logo" />
+  <h1>AI Studio Enhancer</h1>
+  <p><b>Google AI Studio 增强浏览器扩展</b></p>
+  <p>简体中文 · <a href="README.md">English</a></p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green.svg" alt="许可证" /></a>
+  </p>
+</div>
 
-# AI Studio Enhancer 浏览器扩展
-
-[![许可证](https://img.shields.io/badge/许可证-MIT-green.svg)](LICENSE)
+---
 
 AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的浏览器扩展，提供强大的对话管理和导航功能，主要适用场景有对话归档、内容引用、分享交互、数据分析、长对话导航、快速回顾。
 
