@@ -1,8 +1,14 @@
-[简体中文](./README_zh-CN.md)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/chenx2code/ai-studio-enhancer/master/icons/icon128.png" width="100" alt="AI Studio Enhancer Logo" />
+  <h1>AI Studio Enhancer</h1>
+  <p><b>Browser Extension for Google AI Studio</b></p>
+  <p><a href="README_zh-CN.md">简体中文</a> · English</p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
+  </p>
+</div>
 
-# AI Studio Enhancer Browser Extension
-
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+---
 
 **AI Studio Enhancer** is a browser extension designed to comprehensively enhance the **Google AI Studio** user experience, providing powerful conversation management and navigation features.
 
