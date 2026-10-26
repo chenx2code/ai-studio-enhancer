@@ -278,45 +278,51 @@
     }
 
     // 2. Group consecutive user chunks in conversationTurns into prompt rounds.
-    // In Google AI Studio, a single user prompt with attachments and text is stored as
-    // consecutive 'user' chunks (e.g. chunk 0: file, chunk 1: text) before a 'model' turn.
+    // In Google AI Studio, each user chunk (file, text) is rendered as a separate ms-chat-turn in the DOM.
+    // Consecutive user chunks before a model turn belong to the same prompt round.
     const userPromptRounds = [];
     let currentRound = null;
+    let userChunkCounter = 0;
 
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
       if (role === 'user') {
+        const domIndex = userChunkCounter;
+        userChunkCounter++;
+
         if (!currentRound) {
           currentRound = {
             primaryTurnIndex: index,
+            startDomIndex: domIndex,
             chunks: []
           };
           userPromptRounds.push(currentRound);
         }
-        currentRound.chunks.push({ turn, index });
+        currentRound.chunks.push({ turn, index, domIndex });
+        currentRound.endDomIndex = domIndex;
       } else {
         // Model turn ends the current user prompt round
         currentRound = null;
       }
     });
 
+    const totalUserChunks = userChunkCounter;
+    const totalRounds = userPromptRounds.length;
     const userPrompts = [];
     let turnCounter = 0;
-    const totalRounds = userPromptRounds.length;
 
-    // Stamp rendered user chat turn DOM elements with round index
+    // Stamp rendered user chat turn DOM elements with their precise DOM index
     userTurnElements.forEach((el, idx) => {
-      el.setAttribute('data-enhancer-round-index', String(idx));
-      el.setAttribute('data-enhancer-turn-counter', String(idx + 1));
+      el.setAttribute('data-enhancer-dom-index', String(idx));
     });
 
     userPromptRounds.forEach((round, roundIdx) => {
       turnCounter++;
       const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
 
-      // Match 1:1 with corresponding user turn DOM element
-      const turnElement = userTurnElements[roundIdx] || null;
+      // Match with primary user turn DOM element of this round
+      const turnElement = userTurnElements[round.startDomIndex] || null;
       const turnElementId = turnElement ? turnElement.id : null;
 
       // Extract combined text from all user chunks in this round
@@ -338,11 +344,15 @@
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
+          totalUserChunks: totalUserChunks,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
+          startDomIndex: round.startDomIndex,
+          endDomIndex: round.endDomIndex,
+          targetDomIndex: round.startDomIndex,
           turnElementId: turnElementId,
           promptText: fullText,
           pureText: fullText,
@@ -353,9 +363,13 @@
 
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
         attachments.forEach((att, attIdx) => {
+          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
+          const attDomIndex = attChunk ? attChunk.domIndex : round.startDomIndex;
+
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
+            totalUserChunks: totalUserChunks,
             turnCounter: turnCounter,
             turnBadge: '',
             isTurnRoot: false,
@@ -365,6 +379,9 @@
             fileName: att.fileName,
             pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
+            startDomIndex: round.startDomIndex,
+            endDomIndex: round.endDomIndex,
+            targetDomIndex: attDomIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -376,9 +393,13 @@
         // B. Round has NO text, only attachments: first attachment is turn root
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
+          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
+          const attDomIndex = attChunk ? attChunk.domIndex : round.startDomIndex;
+
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
+            totalUserChunks: totalUserChunks,
             turnCounter: turnCounter,
             turnBadge: isRoot ? badgeStr : '',
             isTurnRoot: isRoot,
@@ -388,6 +409,9 @@
             fileName: att.fileName,
             pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
+            startDomIndex: round.startDomIndex,
+            endDomIndex: round.endDomIndex,
+            targetDomIndex: attDomIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -400,11 +424,15 @@
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
+          totalUserChunks: totalUserChunks,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
+          startDomIndex: round.startDomIndex,
+          endDomIndex: round.endDomIndex,
+          targetDomIndex: round.startDomIndex,
           turnElementId: turnElementId,
           promptText: '[Prompt]',
           pureText: '',
@@ -673,14 +701,14 @@
     return text;
   }
 
-  // Infer prompt round index corresponding to a rendered DOM turn
+  // Infer prompt DOM index corresponding to a rendered DOM turn
   function inferCatalogIndex(turnEl, catalogData) {
     if (!turnEl || !catalogData || catalogData.length === 0) return -1;
 
-    // 1. Stamped round index attribute
-    const stampedRound = turnEl.getAttribute('data-enhancer-round-index');
-    if (stampedRound !== null) {
-      const parsed = parseInt(stampedRound, 10);
+    // 1. Stamped DOM index attribute
+    const stamped = turnEl.getAttribute('data-enhancer-dom-index');
+    if (stamped !== null) {
+      const parsed = parseInt(stamped, 10);
       if (!isNaN(parsed)) return parsed;
     }
 
@@ -690,10 +718,10 @@
     for (let i = 0; i < catalogData.length; i++) {
       const item = catalogData[i];
       if (item.pureText && (text.includes(item.pureText) || item.pureText.includes(text))) {
-        return item.roundIndex !== undefined ? item.roundIndex : i;
+        return item.targetDomIndex !== undefined ? item.targetDomIndex : i;
       }
       if (item.fileName && text.includes(item.fileName)) {
-        return item.roundIndex !== undefined ? item.roundIndex : i;
+        return item.targetDomIndex !== undefined ? item.targetDomIndex : i;
       }
     }
     return -1;
@@ -703,11 +731,11 @@
   function findTargetElement(catalogItem) {
     if (!catalogItem) return null;
 
-    const roundIndex = catalogItem.roundIndex;
+    const targetDomIndex = catalogItem.targetDomIndex !== undefined ? catalogItem.targetDomIndex : catalogItem.roundIndex;
 
-    // Tier 1: Direct stamped attribute or ID match
-    if (roundIndex !== undefined) {
-      const stampedEl = document.querySelector(`ms-chat-turn[data-enhancer-round-index="${roundIndex}"]`);
+    // Tier 1: Direct stamped DOM index attribute or element ID match
+    if (targetDomIndex !== undefined) {
+      const stampedEl = document.querySelector(`ms-chat-turn[data-enhancer-dom-index="${targetDomIndex}"]`);
       if (stampedEl) return stampedEl;
     }
 
@@ -729,24 +757,26 @@
 
     if (userTurns.length === 0) return null;
 
-    const totalRounds = catalogItem.totalRounds || (userTurns.length > 0 ? userTurns.length : 1);
+    const totalUserChunks = catalogItem.totalUserChunks || userTurns.length;
 
-    // Stamp user turns with their round index
-    userTurns.forEach((u, idx) => {
-      if (!u.element.hasAttribute('data-enhancer-round-index')) {
-        u.element.setAttribute('data-enhancer-round-index', String(idx));
-      }
-    });
+    // Stamp user turns with their DOM index if all rendered
+    if (userTurns.length >= totalUserChunks) {
+      userTurns.forEach((u, idx) => {
+        if (!u.element.hasAttribute('data-enhancer-dom-index')) {
+          u.element.setAttribute('data-enhancer-dom-index', String(idx));
+        }
+      });
+    }
 
-    // Tier 2: Exact Round Index Mapping
-    // When roundIndex is within bounds of rendered userTurns:
-    if (roundIndex !== undefined && roundIndex >= 0 && roundIndex < userTurns.length) {
-      // If count matches total rounds, it is guaranteed 1:1
-      if (userTurns.length === totalRounds) {
-        return userTurns[roundIndex].element;
+    // Tier 2: Exact DOM Index Mapping
+    // When targetDomIndex is within bounds of rendered userTurns:
+    if (targetDomIndex !== undefined && targetDomIndex >= 0 && targetDomIndex < userTurns.length) {
+      // If count matches total user chunks, it is guaranteed 1:1
+      if (userTurns.length >= totalUserChunks) {
+        return userTurns[targetDomIndex].element;
       }
-      // If count doesn't match total rounds (virtualized subset), verify if candidate card matches content
-      const candidateEl = userTurns[roundIndex].element;
+      // If count doesn't match total chunks (virtualized subset), verify if candidate card matches content
+      const candidateEl = userTurns[targetDomIndex].element;
       const candidateText = getCleanPromptText(candidateEl);
       if (catalogItem.pureText && candidateText.includes(catalogItem.pureText)) {
         return candidateEl;
@@ -775,7 +805,7 @@
         return matches[0];
       } else if (matches.length > 1) {
         // Pick candidate closest to expected proportional position
-        const targetRatio = roundIndex !== undefined ? roundIndex / Math.max(1, totalRounds - 1) : 0;
+        const targetRatio = targetDomIndex !== undefined ? targetDomIndex / Math.max(1, totalUserChunks - 1) : 0;
         const expectedDomIndex = Math.round(targetRatio * (userTurns.length - 1));
         let best = matches[0];
         let minDiff = Infinity;
@@ -792,8 +822,8 @@
     }
 
     // Tier 4: Proportional ratio fallback when partially virtualized
-    if (roundIndex !== undefined && totalRounds > 0 && userTurns.length > 0) {
-      const targetRatio = roundIndex / Math.max(1, totalRounds - 1);
+    if (targetDomIndex !== undefined && totalUserChunks > 0 && userTurns.length > 0) {
+      const targetRatio = targetDomIndex / Math.max(1, totalUserChunks - 1);
       const estimatedIdx = Math.max(0, Math.min(userTurns.length - 1, Math.round(targetRatio * (userTurns.length - 1))));
       return userTurns[estimatedIdx].element;
     }
@@ -923,10 +953,10 @@
 
       let scrollUp = true;
       if (userTurns.length > 0) {
-        const firstVisibleIdx = inferCatalogIndex(userTurns[0], catalogData);
-        const targetRound = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
-        if (firstVisibleIdx !== -1) {
-          scrollUp = targetRound < firstVisibleIdx;
+        const firstVisibleDomIdx = inferCatalogIndex(userTurns[0], catalogData);
+        const targetDom = catalogItem.targetDomIndex !== undefined ? catalogItem.targetDomIndex : (catalogItem.roundIndex || 0);
+        if (firstVisibleDomIdx !== -1) {
+          scrollUp = targetDom < firstVisibleDomIdx;
         } else {
           scrollUp = scroller.scrollTop > 300;
         }
@@ -1105,41 +1135,42 @@
     const catalogData = State.getCatalogData();
     if (!catalogData || catalogData.length === 0) return;
 
-    // 1. Try stamped round index
-    const stamped = activeTurnEl.getAttribute('data-enhancer-round-index');
+    // 1. Try stamped DOM index or active DOM turn index
+    let domIndex = activeTurnDomIndex;
+    const stamped = activeTurnEl.getAttribute('data-enhancer-dom-index');
     if (stamped !== null) {
       const parsed = parseInt(stamped, 10);
       if (!isNaN(parsed)) {
-        const found = catalogData.find(item => item.roundIndex === parsed);
-        if (found) {
-          updateActiveTurnHighlight(found.turnIndex, found.turnCounter);
-          return;
-        }
+        domIndex = parsed;
       }
     }
 
-    // 2. Direct 1:1 index match if all turns rendered
-    const totalRounds = new Set(catalogData.map(item => item.roundIndex)).size;
-    if (userTurns.length === totalRounds && activeTurnDomIndex < totalRounds) {
-      const found = catalogData.find(item => item.roundIndex === activeTurnDomIndex);
-      if (found) {
-        updateActiveTurnHighlight(found.turnIndex, found.turnCounter);
-        return;
+    // Find the catalog item whose round covers this domIndex (startDomIndex <= domIndex <= endDomIndex)
+    let found = catalogData.find(item =>
+      item.startDomIndex !== undefined &&
+      item.endDomIndex !== undefined &&
+      item.startDomIndex <= domIndex &&
+      domIndex <= item.endDomIndex &&
+      item.isTurnRoot
+    );
+
+    if (!found) {
+      found = catalogData.find(item => item.targetDomIndex === domIndex);
+    }
+
+    // 2. Fallback content matching
+    if (!found) {
+      const cleanText = getCleanPromptText(activeTurnEl);
+      if (cleanText) {
+        found = catalogData.find(item =>
+          (item.pureText && cleanText.includes(item.pureText)) ||
+          (item.fileName && cleanText.includes(item.fileName))
+        );
       }
     }
 
-    // 3. Fallback content matching
-    const cleanText = getCleanPromptText(activeTurnEl);
-    let targetCatalogItem = null;
-    if (cleanText) {
-      targetCatalogItem = catalogData.find(item =>
-        (item.pureText && cleanText.includes(item.pureText)) ||
-        (item.fileName && cleanText.includes(item.fileName))
-      );
-    }
-
-    if (targetCatalogItem) {
-      updateActiveTurnHighlight(targetCatalogItem.turnIndex, targetCatalogItem.turnCounter);
+    if (found) {
+      updateActiveTurnHighlight(found.turnIndex, found.turnCounter);
     }
   }
 
