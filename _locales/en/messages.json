@@ -150,5 +150,13 @@
   "notificationMessage": {
     "message": "Google AI Studio has finished generating a response.",
     "description": "Message body of the desktop notification."
+  },
+  "thoughtProcess": {
+    "message": "Thought Process",
+    "description": "Label for thought process in exported markdown."
+  },
+  "untitledPrompt": {
+    "message": "Untitled Prompt",
+    "description": "Default prompt title when text and attachments are absent."
   }
 }

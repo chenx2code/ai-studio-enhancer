@@ -150,5 +150,13 @@
   "notificationMessage": {
     "message": "Google AI Studio 已经完成回复生成。",
     "description": "桌面通知的正文内容。"
+  },
+  "thoughtProcess": {
+    "message": "思考过程",
+    "description": "导出的 Markdown 中思考过程的标签。"
+  },
+  "untitledPrompt": {
+    "message": "未命名提问",
+    "description": "无文本且无附件时的默认提问标题。"
   }
 }
