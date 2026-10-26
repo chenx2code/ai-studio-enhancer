@@ -56,7 +56,7 @@
                 if (!Array.isArray(turn)) return;
                 // turn[1] is imageContent
                 if (turn[1] && Array.isArray(turn[1])) {
-                  turn[1] = turn[1].length > 0 ? ['[OMITTED_IMAGE]'] : [];
+                  turn[1] = turn[1].map(() => '[OMITTED_IMAGE]');
                 }
                 // turn[3] is cloudFileContent
                 if (turn[3] && Array.isArray(turn[3])) {
@@ -65,7 +65,7 @@
                 }
                 // turn[12] is inlineContent
                 if (turn[12] && Array.isArray(turn[12])) {
-                  turn[12] = turn[12].length > 0 ? ['image/[OMITTED]'] : [];
+                  turn[12] = turn[12].map(item => (typeof item === 'string' && item.startsWith('image/')) ? item : 'image/[OMITTED]');
                 }
                 // turn[23] is docContent
                 if (turn[23] && Array.isArray(turn[23])) {

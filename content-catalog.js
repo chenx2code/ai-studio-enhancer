@@ -96,51 +96,209 @@
     }
   }
 
+  // Extract clean image info, resolving true filename if present, or human-friendly label
+  function extractImageInfo(img, imgIdx, totalImages) {
+    const isPlaceholder = (val) => {
+      if (!val || typeof val !== 'string') return true;
+      const clean = val.trim().toLowerCase();
+      return (
+        !clean ||
+        clean === 'uploaded image preview' ||
+        clean === 'uploaded image' ||
+        clean === 'image preview' ||
+        clean === 'preview image' ||
+        clean === 'preview' ||
+        clean === 'image' ||
+        clean === '[image]' ||
+        clean === '上传的图片预览' ||
+        clean === '上传的图片' ||
+        clean === '图片预览' ||
+        clean === '图片' ||
+        clean.startsWith('view image') ||
+        clean.startsWith('remove image') ||
+        clean.startsWith('delete image')
+      );
+    };
+
+    // 1. Look for explicit real filename on img or its container hierarchy
+    let realName = '';
+    const candidates = [
+      img.getAttribute('data-filename'),
+      img.getAttribute('data-name'),
+      img.title,
+      img.alt
+    ];
+
+    const container = img.closest(
+      '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
+    );
+    if (container) {
+      candidates.push(
+        container.getAttribute('data-filename'),
+        container.getAttribute('data-name'),
+        container.title,
+        container.getAttribute('aria-label')
+      );
+
+      // Button inside container (e.g. view full screen or remove)
+      const btn = container.querySelector('button[aria-label]');
+      if (btn) {
+        const btnLabel = btn.getAttribute('aria-label');
+        if (btnLabel && !isPlaceholder(btnLabel)) {
+          const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+          if (match) candidates.push(match[1]);
+          else candidates.push(btnLabel);
+        }
+      }
+    }
+
+    for (const cand of candidates) {
+      if (cand && !isPlaceholder(cand)) {
+        let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
+        if (cleaned && !isPlaceholder(cleaned)) {
+          realName = cleaned;
+          break;
+        }
+      }
+    }
+
+    // Determine extension and tag
+    let fileType = 'IMG';
+    if (realName) {
+      const extMatch = realName.match(/\.([a-zA-Z0-9]+)$/);
+      if (extMatch) {
+        fileType = extMatch[1].toUpperCase();
+      }
+    }
+
+    const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
+    const fallbackLabel = totalImages > 1 ? `${defaultWord} ${imgIdx + 1}` : defaultWord;
+
+    return {
+      fileName: realName || fallbackLabel,
+      fileType: fileType,
+      fileCategory: 'image',
+      isDefaultName: !realName,
+      imageIndex: imgIdx,
+      totalImages: totalImages
+    };
+  }
+
   // Extract attachments for a round of user chunks from live DOM elements and API turn data
-  function extractRoundAttachments(chunks, turnEl, fullText) {
+  function extractRoundAttachments(chunks, roundElements, fullText) {
     const attachments = [];
     const seenSignatures = new Set();
 
-    // 1. DOM extraction if turnEl is present in viewport / DOM
-    if (turnEl) {
-      // Images in user turn (excluding avatars and profile icons)
-      const images = Array.from(turnEl.querySelectorAll('img')).filter((img) => {
+    // Normalize roundElements into array of { element, domIndex }
+    const elementList = [];
+    if (Array.isArray(roundElements)) {
+      roundElements.forEach((item) => {
+        if (item && item.element) {
+          elementList.push(item);
+        } else if (item instanceof Element) {
+          elementList.push({ element: item, domIndex: undefined });
+        }
+      });
+    } else if (roundElements instanceof Element) {
+      elementList.push({ element: roundElements, domIndex: undefined });
+    }
+
+    // 1. Gather all rendered images across DOM cards of this round
+    const domImages = [];
+    elementList.forEach(({ element, domIndex }) => {
+      const images = Array.from(element.querySelectorAll('img')).filter((img) => {
         if (img.classList.contains('user-icon') || img.classList.contains('avatar') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
           return false;
         }
         return true;
       });
+      images.forEach((img, subIdx) => {
+        domImages.push({ img, domIndex, subIdx });
+      });
+    });
 
-      images.forEach((img, idx) => {
-        const alt = (img.getAttribute('alt') || '').trim();
-        const fName = alt || (images.length > 1 ? `${chrome.i18n.getMessage('imageLabel') || 'Image'} ${idx + 1}` : (chrome.i18n.getMessage('imageLabel') || 'Image'));
-        const sig = `image:${fName}`;
-        if (!seenSignatures.has(sig)) {
-          seenSignatures.add(sig);
+    // 2. Gather image occurrences from API chunks in this round
+    const apiImages = [];
+    chunks.forEach(({ turn, index, domIndex }) => {
+      if (!Array.isArray(turn)) return;
+      const imageContent = turn[1];
+      const inlineContent = turn[12];
+      if (Array.isArray(imageContent) && imageContent.length > 0) {
+        imageContent.forEach((_, subIdx) => {
+          apiImages.push({ index, domIndex, subIdx });
+        });
+      } else if (Array.isArray(inlineContent) && inlineContent.length > 0) {
+        inlineContent.forEach((item, subIdx) => {
+          if (typeof item === 'string' && (item.startsWith('image/') || item.includes('OMITTED'))) {
+            apiImages.push({ index, domIndex, subIdx });
+          }
+        });
+      }
+    });
+
+    const totalImages = Math.max(domImages.length, apiImages.length);
+
+    // Populate image attachments
+    if (domImages.length > 0) {
+      domImages.forEach(({ img, domIndex, subIdx }, idx) => {
+        const info = extractImageInfo(img, idx, totalImages);
+        const matchingChunk = chunks.find(c => c.domIndex === domIndex);
+        const turnIndex = matchingChunk ? matchingChunk.index : (chunks[0] ? chunks[0].index : undefined);
+        attachments.push({
+          type: 'image',
+          fileCategory: 'image',
+          fileType: info.fileType,
+          fileName: info.fileName,
+          domIndex: domIndex,
+          subIndex: subIdx,
+          turnIndex: turnIndex
+        });
+      });
+
+      // If API has more images than DOM (due to virtualization), supplement missing ones
+      if (apiImages.length > domImages.length) {
+        const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
+        for (let i = domImages.length; i < apiImages.length; i++) {
+          const apiImg = apiImages[i];
           attachments.push({
             type: 'image',
             fileCategory: 'image',
             fileType: 'IMG',
-            fileName: fName
+            fileName: totalImages > 1 ? `${defaultWord} ${i + 1}` : defaultWord,
+            domIndex: apiImg.domIndex,
+            subIndex: apiImg.subIdx,
+            turnIndex: apiImg.index
           });
         }
+      }
+    } else if (apiImages.length > 0) {
+      const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
+      apiImages.forEach((apiImg, idx) => {
+        attachments.push({
+          type: 'image',
+          fileCategory: 'image',
+          fileType: 'IMG',
+          fileName: totalImages > 1 ? `${defaultWord} ${idx + 1}` : defaultWord,
+          domIndex: apiImg.domIndex,
+          subIndex: apiImg.subIdx,
+          turnIndex: apiImg.index
+        });
       });
+    }
 
-      // File elements / chips in user turn (cards, file chips, attachment previews)
-      const fileElements = Array.from(turnEl.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], ms-file-chunk, ms-media-chunk, [data-test-id*="file"]')).filter((el) => {
-        // Exclude outer chat containers
+    // 3. Extract file elements / chips across DOM cards of this round
+    elementList.forEach(({ element, domIndex }) => {
+      const fileElements = Array.from(element.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], ms-file-chunk, ms-media-chunk, [data-test-id*="file"]')).filter((el) => {
         if (el.classList.contains('chat-turn-container') || el.tagName.toLowerCase() === 'ms-chat-turn') {
           return false;
         }
         const text = el.textContent ? el.textContent.trim() : '';
         if (!text || (fullText && text === fullText)) return false;
-        // Keep leaf-ish elements to avoid duplicate parents
         return !el.querySelector('[class*="file"], [class*="chip"], [class*="attachment"]');
       });
 
       fileElements.forEach((fel) => {
         let rawText = fel.textContent.trim();
-        // Remove trailing token counts like "7,281 tokens" or "12k tokens"
         rawText = rawText.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/i, '').trim();
         const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
         let fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
@@ -154,44 +312,30 @@
           const sig = `file:${fName}`;
           if (!seenSignatures.has(sig)) {
             seenSignatures.add(sig);
+            const matchingChunk = chunks.find(c => c.domIndex === domIndex);
             attachments.push({
               type: 'file',
               fileCategory: category,
               fileType: fileType,
-              fileName: fName
+              fileName: fName,
+              domIndex: domIndex,
+              turnIndex: matchingChunk ? matchingChunk.index : (chunks[0] ? chunks[0].index : undefined)
             });
           }
         }
       });
-    }
+    });
 
-    // 2. Extract or supplement from API chunks in this round
-    chunks.forEach(({ turn, index }) => {
+    // 4. Extract or supplement from API chunks in this round
+    chunks.forEach(({ turn, index, domIndex }) => {
       if (!Array.isArray(turn)) return;
 
-      const imageContent = turn[1];
       const cloudFileContent = turn[3];
-      const inlineContent = turn[12];
       const youtubeContent = turn[13];
       const docContent = turn[23];
 
-      if ((imageContent && Array.isArray(imageContent) && imageContent.length > 0) ||
-          (inlineContent && Array.isArray(inlineContent) && inlineContent.length > 0)) {
-        const sig = 'image:api';
-        if (!seenSignatures.has(sig) && attachments.filter(a => a.type === 'image').length === 0) {
-          seenSignatures.add(sig);
-          attachments.push({
-            type: 'image',
-            fileCategory: 'image',
-            fileType: 'IMG',
-            fileName: chrome.i18n.getMessage('imageLabel') || 'Image',
-            turnIndex: index
-          });
-        }
-      }
-
       if (youtubeContent && Array.isArray(youtubeContent) && youtubeContent.length > 0) {
-        const sig = 'video:youtube';
+        const sig = `video:youtube:${index}`;
         if (!seenSignatures.has(sig)) {
           seenSignatures.add(sig);
           attachments.push({
@@ -199,7 +343,8 @@
             fileCategory: 'video',
             fileType: 'Video',
             fileName: 'YouTube Video',
-            turnIndex: index
+            turnIndex: index,
+            domIndex: domIndex
           });
         }
       }
@@ -218,11 +363,12 @@
           unassignedFile.fileCategory = category;
           unassignedFile.enhanced = true;
           unassignedFile.turnIndex = index;
+          if (unassignedFile.domIndex === undefined) unassignedFile.domIndex = domIndex;
         } else {
           if (!fileName) {
             fileName = `${friendlyType} ${chrome.i18n.getMessage('fileLabel') || 'File'}`;
           }
-          const sig = `file:${fileName}`;
+          const sig = `file:${fileName}:${index}`;
           if (!seenSignatures.has(sig)) {
             seenSignatures.add(sig);
             attachments.push({
@@ -230,7 +376,8 @@
               fileCategory: category,
               fileType: tag,
               fileName: fileName,
-              turnIndex: index
+              turnIndex: index,
+              domIndex: domIndex
             });
           }
         }
@@ -243,8 +390,9 @@
           unassignedFile.fileCategory = 'pdf';
           unassignedFile.enhanced = true;
           unassignedFile.turnIndex = index;
+          if (unassignedFile.domIndex === undefined) unassignedFile.domIndex = domIndex;
         } else {
-          const sig = 'file:cloud';
+          const sig = `file:cloud:${index}`;
           if (!seenSignatures.has(sig)) {
             seenSignatures.add(sig);
             attachments.push({
@@ -252,7 +400,8 @@
               fileCategory: 'pdf',
               fileType: 'PDF',
               fileName: `PDF ${chrome.i18n.getMessage('fileLabel') || 'File'}`,
-              turnIndex: index
+              turnIndex: index,
+              domIndex: domIndex
             });
           }
         }
@@ -321,7 +470,13 @@
       turnCounter++;
       const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
 
-      // Match with primary user turn DOM element of this round
+      // Match with user turn DOM elements belonging to this round
+      const roundElements = [];
+      for (let d = round.startDomIndex; d <= round.endDomIndex; d++) {
+        if (userTurnElements[d]) {
+          roundElements.push({ element: userTurnElements[d], domIndex: d });
+        }
+      }
       const turnElement = userTurnElements[round.startDomIndex] || null;
       const turnElementId = turnElement ? turnElement.id : null;
 
@@ -336,8 +491,8 @@
       const fullText = textParts.join(' ');
       const primaryIndex = round.primaryTurnIndex;
 
-      // Extract attachments from DOM element and API chunks in this round
-      const attachments = extractRoundAttachments(round.chunks, turnElement, fullText);
+      // Extract attachments from DOM elements and API chunks in this round
+      const attachments = extractRoundAttachments(round.chunks, roundElements, fullText);
 
       if (fullText) {
         // A. Round has text: text row is turn root (gets the sequence badge)
@@ -364,7 +519,9 @@
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
         attachments.forEach((att, attIdx) => {
           const attChunk = round.chunks.find(c => c.index === att.turnIndex);
-          const attDomIndex = attChunk ? attChunk.domIndex : round.startDomIndex;
+          const attDomIndex = att.domIndex !== undefined
+            ? att.domIndex
+            : (attChunk ? attChunk.domIndex : round.startDomIndex);
 
           userPrompts.push({
             roundIndex: roundIdx,
@@ -385,7 +542,7 @@
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
-            subIndex: attIdx,
+            subIndex: att.subIndex !== undefined ? att.subIndex : attIdx,
             role: 'user'
           });
         });
@@ -394,7 +551,9 @@
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
           const attChunk = round.chunks.find(c => c.index === att.turnIndex);
-          const attDomIndex = attChunk ? attChunk.domIndex : round.startDomIndex;
+          const attDomIndex = att.domIndex !== undefined
+            ? att.domIndex
+            : (attChunk ? attChunk.domIndex : round.startDomIndex);
 
           userPrompts.push({
             roundIndex: roundIdx,
@@ -415,7 +574,7 @@
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
-            subIndex: attIdx,
+            subIndex: att.subIndex !== undefined ? att.subIndex : attIdx,
             role: 'user'
           });
         });
@@ -875,6 +1034,24 @@
       window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
       window.addEventListener('keydown', onUserInterrupt, { capture: true, passive: true });
 
+      // Resolve sub-element within card for image or file attachments
+      const resolveSubTarget = (cardEl, item) => {
+        if (!cardEl || !item) return cardEl;
+        if (item.type === 'image') {
+          const imgs = Array.from(cardEl.querySelectorAll('img')).filter((img) => {
+            if (img.classList.contains('user-icon') || img.classList.contains('avatar') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+              return false;
+            }
+            return true;
+          });
+          if (imgs.length > 0) {
+            const idx = item.subIndex || 0;
+            return imgs[idx] || imgs[0] || cardEl;
+          }
+        }
+        return cardEl;
+      };
+
       // Precision landing helper when target DOM element is available
       const landOnTarget = (targetEl) => {
         if (!targetEl) {
@@ -882,7 +1059,8 @@
           return;
         }
 
-        const targetRect = targetEl.getBoundingClientRect();
+        const subTarget = resolveSubTarget(targetEl, catalogItem);
+        const targetRect = subTarget.getBoundingClientRect();
         const scrollerRect = scroller.getBoundingClientRect();
         const desiredTop = 80;
 
@@ -892,11 +1070,12 @@
 
         // Precision landing multi-step settle helper
         const settleToTarget = (attempt = 0) => {
-          const freshTarget = findTargetElement(catalogItem) || targetEl;
-          if (!freshTarget) {
+          const freshCard = findTargetElement(catalogItem) || targetEl;
+          if (!freshCard) {
             cleanup();
             return;
           }
+          const freshTarget = resolveSubTarget(freshCard, catalogItem);
           const freshRect = freshTarget.getBoundingClientRect();
           const settleDelta = (freshRect.top - scrollerRect.top) - desiredTop;
 
@@ -921,7 +1100,8 @@
           requestAnimationFrame(() => {
             if (!isNavigating) return;
 
-            const freshTarget = findTargetElement(catalogItem) || targetEl;
+            const freshCard = findTargetElement(catalogItem) || targetEl;
+            const freshTarget = resolveSubTarget(freshCard, catalogItem);
             const freshTargetRect = freshTarget.getBoundingClientRect();
             const finalDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
             const finalTargetTop = scroller.scrollTop + finalDelta;
@@ -1089,7 +1269,7 @@
     }
   }
 
-  function updateActiveTurnHighlight(turnIndex, turnCounter) {
+  function updateActiveTurnHighlight(turnIndex, turnCounter, subIndex) {
     const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
     if (!list) return;
 
@@ -1097,10 +1277,20 @@
     items.forEach((item) => {
       const idx = item.getAttribute('data-turn-index');
       const counter = item.getAttribute('data-turn-counter');
-      const matches = (turnCounter !== undefined && counter === String(turnCounter)) ||
-                      (idx !== null && parseInt(idx, 10) === turnIndex);
-      if (matches) {
-        item.classList.add('catalog-item-selected');
+      const itemSub = item.getAttribute('data-sub-index');
+      const matchesCounter = (turnCounter !== undefined && counter === String(turnCounter));
+      const matchesIdx = (idx !== null && parseInt(idx, 10) === turnIndex);
+
+      if (matchesCounter || matchesIdx) {
+        if (subIndex !== undefined && subIndex !== null && itemSub !== null) {
+          if (String(subIndex) === itemSub) {
+            item.classList.add('catalog-item-selected');
+          } else {
+            item.classList.remove('catalog-item-selected');
+          }
+        } else {
+          item.classList.add('catalog-item-selected');
+        }
       } else {
         item.classList.remove('catalog-item-selected');
       }
@@ -1246,6 +1436,9 @@
     if (catalogItem.turnCounter !== undefined) {
       listItem.setAttribute('data-turn-counter', catalogItem.turnCounter);
     }
+    if (catalogItem.subIndex !== undefined) {
+      listItem.setAttribute('data-sub-index', String(catalogItem.subIndex));
+    }
     listItem.setAttribute('role', 'button');
     listItem.setAttribute('tabindex', '0');
     if (catalogItem.isTurnRoot) {
@@ -1293,7 +1486,7 @@
     listItem.appendChild(content);
 
     listItem.addEventListener('click', function () {
-      updateActiveTurnHighlight(catalogItem.turnIndex, catalogItem.turnCounter);
+      updateActiveTurnHighlight(catalogItem.turnIndex, catalogItem.turnCounter, catalogItem.subIndex);
       navigateToPrompt(catalogItem);
     });
 
