@@ -918,7 +918,7 @@
 
     const totalUserChunks = catalogItem.totalUserChunks || userTurns.length;
 
-    // Stamp user turns with their DOM index if all rendered
+    // Stamp user turns with their DOM index if count matches total chunks
     if (userTurns.length >= totalUserChunks) {
       userTurns.forEach((u, idx) => {
         if (!u.element.hasAttribute('data-enhancer-dom-index')) {
@@ -927,56 +927,68 @@
       });
     }
 
-    // Tier 2: Exact DOM Index Mapping
-    // When targetDomIndex is within bounds of rendered userTurns:
-    if (targetDomIndex !== undefined && targetDomIndex >= 0 && targetDomIndex < userTurns.length) {
-      // If count matches total user chunks, it is guaranteed 1:1
-      if (userTurns.length >= totalUserChunks) {
-        return userTurns[targetDomIndex].element;
-      }
-      // If count doesn't match total chunks (virtualized subset), verify if candidate card matches content
-      const candidateEl = userTurns[targetDomIndex].element;
-      const candidateText = getCleanPromptText(candidateEl);
-      if (catalogItem.pureText && candidateText.includes(catalogItem.pureText)) {
-        return candidateEl;
-      }
-      if (catalogItem.fileName && candidateText.includes(catalogItem.fileName)) {
-        return candidateEl;
-      }
-    }
-
-    // Tier 3: Content-based Matching (for virtualized / scrolling window)
     const pureText = (catalogItem.pureText || '').trim();
     const fileName = (catalogItem.fileName || '').trim();
 
+    // Tier 2: Exact full text or filename match (Strict)
     if (pureText || fileName) {
-      const matches = [];
+      const exactMatches = [];
       userTurns.forEach((u) => {
         const tText = getCleanPromptText(u.element);
-        if (pureText && (tText.includes(pureText) || pureText.includes(tText.slice(0, 30)))) {
-          matches.push(u.element);
+        if (pureText && tText === pureText) {
+          exactMatches.push(u.element);
         } else if (fileName && tText.includes(fileName)) {
-          matches.push(u.element);
+          exactMatches.push(u.element);
         }
       });
 
-      if (matches.length === 1) {
-        return matches[0];
-      } else if (matches.length > 1) {
-        // Pick candidate closest to expected proportional position
-        const targetRatio = targetDomIndex !== undefined ? targetDomIndex / Math.max(1, totalUserChunks - 1) : 0;
-        const expectedDomIndex = Math.round(targetRatio * (userTurns.length - 1));
-        let best = matches[0];
+      if (exactMatches.length === 1) {
+        return exactMatches[0];
+      } else if (exactMatches.length > 1) {
+        let best = exactMatches[0];
         let minDiff = Infinity;
-        for (const el of matches) {
+        for (const el of exactMatches) {
           const idx = userTurns.findIndex(u => u.element === el);
-          const diff = Math.abs(idx - expectedDomIndex);
+          const diff = Math.abs(idx - (targetDomIndex || 0));
           if (diff < minDiff) {
             minDiff = diff;
             best = el;
           }
         }
         return best;
+      }
+
+      // Tier 3: Substring / Prefix match (Requires minimum length >= 6 to prevent short word false positives)
+      if (pureText && pureText.length >= 6) {
+        const sample = pureText.slice(0, 40);
+        const prefixMatches = userTurns.filter((u) => {
+          const tText = getCleanPromptText(u.element);
+          if (!tText || tText.length < 6) return false;
+          return tText.startsWith(sample) || sample.startsWith(tText) || tText.includes(pureText) || pureText.includes(tText);
+        }).map(u => u.element);
+
+        if (prefixMatches.length === 1) {
+          return prefixMatches[0];
+        } else if (prefixMatches.length > 1) {
+          let best = prefixMatches[0];
+          let minDiff = Infinity;
+          for (const el of prefixMatches) {
+            const idx = userTurns.findIndex(u => u.element === el);
+            const diff = Math.abs(idx - (targetDomIndex || 0));
+            if (diff < minDiff) {
+              minDiff = diff;
+              best = el;
+            }
+          }
+          return best;
+        }
+      }
+    }
+
+    // Tier 4: Direct 1:1 physical index fallback if all user chunks are rendered in DOM
+    if (targetDomIndex !== undefined && targetDomIndex >= 0 && targetDomIndex < userTurns.length) {
+      if (userTurns.length >= totalUserChunks) {
+        return userTurns[targetDomIndex].element;
       }
     }
 
@@ -1068,58 +1080,57 @@
         const targetScrollTop = scroller.scrollTop + delta;
         const totalDistance = Math.abs(delta);
 
-        // Precision landing multi-step settle helper
-        const settleToTarget = (attempt = 0) => {
-          const freshCard = findTargetElement(catalogItem) || targetEl;
-          if (!freshCard) {
-            cleanup();
-            return;
-          }
-          const freshTarget = resolveSubTarget(freshCard, catalogItem);
-          const freshRect = freshTarget.getBoundingClientRect();
-          const settleDelta = (freshRect.top - scrollerRect.top) - desiredTop;
+        // Landing Stabilization Anchor: dynamically pins the target to desiredTop (80px)
+        // for 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
+        const anchorLand = () => {
+          const anchorStartTime = performance.now();
+          const anchorWindowMs = 350;
+          let stableFrames = 0;
+          let anchorRafId = null;
 
-          if (Math.abs(settleDelta) > 8 && attempt < 3) {
-            activeNavigationCancel = animateScrollTo(scroller, scroller.scrollTop + settleDelta, 140, () => {
-              settleToTarget(attempt + 1);
-            });
-          } else {
-            cleanup();
-          }
-        };
-
-        // Two-stage motion for large distances (teleport to approach zone + wait 1 frame for reflow + smooth glide)
-        const approachDistance = 1000;
-        if (totalDistance > 1800) {
-          const preJumpTop = delta > 0
-            ? targetScrollTop - approachDistance
-            : targetScrollTop + approachDistance;
-          scroller.scrollTop = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, preJumpTop));
-
-          // Give browser 1 animation frame to reflow and lay out the approach zone elements
-          requestAnimationFrame(() => {
+          const anchorTick = () => {
             if (!isNavigating) return;
 
             const freshCard = findTargetElement(catalogItem) || targetEl;
+            if (!freshCard) {
+              cleanup();
+              return;
+            }
             const freshTarget = resolveSubTarget(freshCard, catalogItem);
-            const freshTargetRect = freshTarget.getBoundingClientRect();
-            const finalDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
-            const finalTargetTop = scroller.scrollTop + finalDelta;
-            const glideDistance = Math.abs(finalDelta);
+            const freshRect = freshTarget.getBoundingClientRect();
+            const currentScrollerRect = scroller.getBoundingClientRect();
+            const settleDelta = Math.round((freshRect.top - currentScrollerRect.top) - desiredTop);
 
-            const duration = Math.min(420, Math.max(260, Math.round(220 + Math.sqrt(glideDistance) * 3.8)));
+            if (Math.abs(settleDelta) > 2) {
+              scroller.scrollTop += settleDelta;
+              stableFrames = 0;
+            } else {
+              stableFrames++;
+            }
 
-            activeNavigationCancel = animateScrollTo(scroller, finalTargetTop, duration, () => {
-              settleToTarget(0);
-            });
-          });
-          return;
-        }
+            const elapsed = performance.now() - anchorStartTime;
+            if (elapsed < anchorWindowMs || stableFrames < 5) {
+              anchorRafId = requestAnimationFrame(anchorTick);
+            } else {
+              cleanup();
+            }
+          };
 
-        // Direct glide for distances <= 1800px
-        const duration = Math.min(420, Math.max(260, Math.round(220 + Math.sqrt(totalDistance) * 3.8)));
+          anchorRafId = requestAnimationFrame(anchorTick);
+          activeNavigationCancel = () => {
+            if (anchorRafId !== null) {
+              cancelAnimationFrame(anchorRafId);
+              anchorRafId = null;
+            }
+          };
+        };
+
+        // Self-adaptive high-speed smooth cruise (capped at ~460ms so it never feels slow even across 50,000+ pixels)
+        // Eliminates violent instant jumps (preJumpTop) which cause browser reflow thrashing.
+        const duration = Math.min(460, Math.max(260, Math.round(200 + Math.sqrt(totalDistance) * 3.6)));
+
         activeNavigationCancel = animateScrollTo(scroller, targetScrollTop, duration, () => {
-          settleToTarget(0);
+          anchorLand();
         });
       };
 
@@ -1225,13 +1236,7 @@
       const totalDistance = Math.abs(maxScroll - scroller.scrollTop);
       if (totalDistance < 5) return;
 
-      const approachDistance = 1000;
-      if (totalDistance > 1800) {
-        scroller.scrollTop = maxScroll - approachDistance;
-      }
-
-      const remainingDistance = Math.abs(maxScroll - scroller.scrollTop);
-      const duration = Math.min(420, Math.max(280, Math.round(240 + Math.sqrt(remainingDistance) * 3.5)));
+      const duration = Math.min(460, Math.max(260, Math.round(200 + Math.sqrt(totalDistance) * 3.6)));
       activeNavigationCancel = animateScrollTo(scroller, maxScroll, duration, () => {
         activeNavigationCancel = null;
       });
