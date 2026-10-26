@@ -821,13 +821,6 @@
       }
     }
 
-    // Tier 4: Proportional ratio fallback when partially virtualized
-    if (targetDomIndex !== undefined && totalUserChunks > 0 && userTurns.length > 0) {
-      const targetRatio = targetDomIndex / Math.max(1, totalUserChunks - 1);
-      const estimatedIdx = Math.max(0, Math.min(userTurns.length - 1, Math.round(targetRatio * (userTurns.length - 1))));
-      return userTurns[estimatedIdx].element;
-    }
-
     return null;
   }
 
@@ -897,40 +890,56 @@
         const targetScrollTop = scroller.scrollTop + delta;
         const totalDistance = Math.abs(delta);
 
-        // Plan A: Two-stage motion for large distances (teleport to approach zone + smooth glide to target)
-        // If distance is large (> 1800px), jump to ~1000px before the target,
-        // then perform a visible, buttery-smooth deceleration glide for the final approach!
+        // Precision landing multi-step settle helper
+        const settleToTarget = (attempt = 0) => {
+          const freshTarget = findTargetElement(catalogItem) || targetEl;
+          if (!freshTarget) {
+            cleanup();
+            return;
+          }
+          const freshRect = freshTarget.getBoundingClientRect();
+          const settleDelta = (freshRect.top - scrollerRect.top) - desiredTop;
+
+          if (Math.abs(settleDelta) > 8 && attempt < 3) {
+            activeNavigationCancel = animateScrollTo(scroller, scroller.scrollTop + settleDelta, 140, () => {
+              settleToTarget(attempt + 1);
+            });
+          } else {
+            cleanup();
+          }
+        };
+
+        // Two-stage motion for large distances (teleport to approach zone + wait 1 frame for reflow + smooth glide)
         const approachDistance = 1000;
         if (totalDistance > 1800) {
           const preJumpTop = delta > 0
             ? targetScrollTop - approachDistance
             : targetScrollTop + approachDistance;
           scroller.scrollTop = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, preJumpTop));
+
+          // Give browser 1 animation frame to reflow and lay out the approach zone elements
+          requestAnimationFrame(() => {
+            if (!isNavigating) return;
+
+            const freshTarget = findTargetElement(catalogItem) || targetEl;
+            const freshTargetRect = freshTarget.getBoundingClientRect();
+            const finalDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
+            const finalTargetTop = scroller.scrollTop + finalDelta;
+            const glideDistance = Math.abs(finalDelta);
+
+            const duration = Math.min(420, Math.max(260, Math.round(220 + Math.sqrt(glideDistance) * 3.8)));
+
+            activeNavigationCancel = animateScrollTo(scroller, finalTargetTop, duration, () => {
+              settleToTarget(0);
+            });
+          });
+          return;
         }
 
-        // Re-measure fresh target coordinates from the approach zone for 100% precision
-        const freshTarget = findTargetElement(catalogItem) || targetEl;
-        const freshTargetRect = freshTarget.getBoundingClientRect();
-        const finalDelta = (freshTargetRect.top - scrollerRect.top) - desiredTop;
-        const finalTargetTop = scroller.scrollTop + finalDelta;
-        const glideDistance = Math.abs(finalDelta);
-
-        // Comfortable glide duration for the final approach (320ms - 420ms)
-        const duration = Math.min(420, Math.max(280, Math.round(240 + Math.sqrt(glideDistance) * 3.8)));
-
-        activeNavigationCancel = animateScrollTo(scroller, finalTargetTop, duration, () => {
-          // Final micro-settle if async rendering shifted layout slightly during flight
-          const settledTarget = findTargetElement(catalogItem) || freshTarget;
-          const settledRect = settledTarget.getBoundingClientRect();
-          const settleDelta = (settledRect.top - scrollerRect.top) - desiredTop;
-
-          if (Math.abs(settleDelta) > 12) {
-            activeNavigationCancel = animateScrollTo(scroller, scroller.scrollTop + settleDelta, 120, () => {
-              cleanup();
-            });
-          } else {
-            cleanup();
-          }
+        // Direct glide for distances <= 1800px
+        const duration = Math.min(420, Math.max(260, Math.round(220 + Math.sqrt(totalDistance) * 3.8)));
+        activeNavigationCancel = animateScrollTo(scroller, targetScrollTop, duration, () => {
+          settleToTarget(0);
         });
       };
 
