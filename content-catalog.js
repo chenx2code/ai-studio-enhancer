@@ -303,6 +303,13 @@
 
     const userPrompts = [];
     let turnCounter = 0;
+    const totalRounds = userPromptRounds.length;
+
+    // Stamp rendered user chat turn DOM elements with round index
+    userTurnElements.forEach((el, idx) => {
+      el.setAttribute('data-enhancer-round-index', String(idx));
+      el.setAttribute('data-enhancer-turn-counter', String(idx + 1));
+    });
 
     userPromptRounds.forEach((round, roundIdx) => {
       turnCounter++;
@@ -329,6 +336,8 @@
       if (fullText) {
         // A. Round has text: text row is turn root (gets the sequence badge)
         userPrompts.push({
+          roundIndex: roundIdx,
+          totalRounds: totalRounds,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
@@ -336,6 +345,7 @@
           turnIndex: primaryIndex,
           turnElementId: turnElementId,
           promptText: fullText,
+          pureText: fullText,
           displayText: fullText,
           truncatedText: Utils.truncateText(fullText, 50),
           role: 'user'
@@ -344,6 +354,8 @@
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
         attachments.forEach((att, attIdx) => {
           userPrompts.push({
+            roundIndex: roundIdx,
+            totalRounds: totalRounds,
             turnCounter: turnCounter,
             turnBadge: '',
             isTurnRoot: false,
@@ -351,6 +363,7 @@
             fileCategory: att.fileCategory,
             fileType: att.fileType,
             fileName: att.fileName,
+            pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
@@ -364,6 +377,8 @@
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
           userPrompts.push({
+            roundIndex: roundIdx,
+            totalRounds: totalRounds,
             turnCounter: turnCounter,
             turnBadge: isRoot ? badgeStr : '',
             isTurnRoot: isRoot,
@@ -371,6 +386,7 @@
             fileCategory: att.fileCategory,
             fileType: att.fileType,
             fileName: att.fileName,
+            pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
@@ -382,6 +398,8 @@
       } else {
         // C. Fallback: empty prompt
         userPrompts.push({
+          roundIndex: roundIdx,
+          totalRounds: totalRounds,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
@@ -389,6 +407,7 @@
           turnIndex: primaryIndex,
           turnElementId: turnElementId,
           promptText: '[Prompt]',
+          pureText: '',
           displayText: '[Prompt]',
           truncatedText: '[Prompt]',
           role: 'user'
@@ -644,23 +663,37 @@
     };
   }
 
-  // Extract clean normalized prompt text from a chat turn element
+  // Extract clean normalized prompt text from a chat turn element, stripping token noise
   function getCleanPromptText(turnEl) {
     if (!turnEl) return '';
     const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
-    return (container.textContent || '').replace(/\s+/g, ' ').trim();
+    let text = (container.textContent || '').replace(/\s+/g, ' ').trim();
+    // Strip token statistics like "7,281 tokens"
+    text = text.replace(/[\d,.]+[kKmM]?\s*tokens?/gi, '').trim();
+    return text;
   }
 
-  // Infer catalog item index corresponding to a rendered DOM turn
+  // Infer prompt round index corresponding to a rendered DOM turn
   function inferCatalogIndex(turnEl, catalogData) {
     if (!turnEl || !catalogData || catalogData.length === 0) return -1;
+
+    // 1. Stamped round index attribute
+    const stampedRound = turnEl.getAttribute('data-enhancer-round-index');
+    if (stampedRound !== null) {
+      const parsed = parseInt(stampedRound, 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+
     const text = getCleanPromptText(turnEl);
     if (!text) return -1;
 
     for (let i = 0; i < catalogData.length; i++) {
-      const itemText = (catalogData[i].promptText || '').replace(/\s+/g, ' ').trim();
-      if (itemText && (itemText === text || itemText.startsWith(text.slice(0, 30)) || text.startsWith(itemText.slice(0, 30)))) {
-        return i;
+      const item = catalogData[i];
+      if (item.pureText && (text.includes(item.pureText) || item.pureText.includes(text))) {
+        return item.roundIndex !== undefined ? item.roundIndex : i;
+      }
+      if (item.fileName && text.includes(item.fileName)) {
+        return item.roundIndex !== undefined ? item.roundIndex : i;
       }
     }
     return -1;
@@ -670,7 +703,14 @@
   function findTargetElement(catalogItem) {
     if (!catalogItem) return null;
 
-    // Tier 1: ID Match (if element has valid ID)
+    const roundIndex = catalogItem.roundIndex;
+
+    // Tier 1: Direct stamped attribute or ID match
+    if (roundIndex !== undefined) {
+      const stampedEl = document.querySelector(`ms-chat-turn[data-enhancer-round-index="${roundIndex}"]`);
+      if (stampedEl) return stampedEl;
+    }
+
     if (catalogItem.turnElementId) {
       const el = document.getElementById(catalogItem.turnElementId);
       if (el) return el;
@@ -689,85 +729,93 @@
 
     if (userTurns.length === 0) return null;
 
-    const targetText = (catalogItem.promptText || '').replace(/\s+/g, ' ').trim();
+    const totalRounds = catalogItem.totalRounds || (userTurns.length > 0 ? userTurns.length : 1);
 
-    // Helper to pick closest candidate if multiple matches exist
-    const pickClosestTurn = (matches) => {
-      const catalogData = State.getCatalogData() || [];
-      const catalogIndex = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
-      const targetRatio = catalogIndex >= 0 ? catalogIndex / Math.max(1, catalogData.length - 1) : 0;
-      const expectedDomIndex = Math.round(targetRatio * (userTurns.length - 1));
-
-      let best = matches[0].element;
-      let minDiff = Infinity;
-      for (const m of matches) {
-        const idx = userTurns.findIndex(u => u.element === m.element);
-        const diff = Math.abs(idx - expectedDomIndex);
-        if (diff < minDiff) {
-          minDiff = diff;
-          best = m.element;
-        }
+    // Stamp user turns with their round index
+    userTurns.forEach((u, idx) => {
+      if (!u.element.hasAttribute('data-enhancer-round-index')) {
+        u.element.setAttribute('data-enhancer-round-index', String(idx));
       }
-      return best;
-    };
+    });
 
-    // Tier 2: Text Matching
-    if (targetText && targetText !== '[File]' && targetText !== '[Image]' && targetText !== '[Document]') {
-      // 2a. Exact match
-      const exactMatches = userTurns.filter(t => getCleanPromptText(t.element) === targetText);
-      if (exactMatches.length === 1) {
-        return exactMatches[0].element;
-      } else if (exactMatches.length > 1) {
-        return pickClosestTurn(exactMatches);
+    // Tier 2: Exact Round Index Mapping
+    // When roundIndex is within bounds of rendered userTurns:
+    if (roundIndex !== undefined && roundIndex >= 0 && roundIndex < userTurns.length) {
+      // If count matches total rounds, it is guaranteed 1:1
+      if (userTurns.length === totalRounds) {
+        return userTurns[roundIndex].element;
       }
-
-      // 2b. Prefix match (first 25 characters)
-      const prefix = targetText.slice(0, 25);
-      if (prefix.length >= 5) {
-        const prefixMatches = userTurns.filter(t => {
-          const tText = getCleanPromptText(t.element);
-          return tText.startsWith(prefix) || prefix.startsWith(tText.slice(0, 25));
-        });
-        if (prefixMatches.length === 1) {
-          return prefixMatches[0].element;
-        } else if (prefixMatches.length > 1) {
-          return pickClosestTurn(prefixMatches);
-        }
+      // If count doesn't match total rounds (virtualized subset), verify if candidate card matches content
+      const candidateEl = userTurns[roundIndex].element;
+      const candidateText = getCleanPromptText(candidateEl);
+      if (catalogItem.pureText && candidateText.includes(catalogItem.pureText)) {
+        return candidateEl;
       }
-
-      // 2c. Substring overlap match
-      let bestCandidate = null;
-      let maxOverlap = 0;
-      for (const t of userTurns) {
-        const tText = getCleanPromptText(t.element);
-        if (!tText) continue;
-        let overlap = 0;
-        const minLen = Math.min(tText.length, targetText.length);
-        while (overlap < minLen && tText[overlap] === targetText[overlap]) {
-          overlap++;
-        }
-        if (overlap > 10 && overlap > maxOverlap) {
-          maxOverlap = overlap;
-          bestCandidate = t.element;
-        }
+      if (catalogItem.fileName && candidateText.includes(catalogItem.fileName)) {
+        return candidateEl;
       }
-      if (bestCandidate) return bestCandidate;
     }
 
-    // Tier 3: Index match fallback when all turns are fully rendered
-    const catalogData = State.getCatalogData() || [];
-    const catalogIndex = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
-    if (catalogIndex >= 0 && catalogData.length === userTurns.length) {
-      return userTurns[catalogIndex].element;
+    // Tier 3: Content-based Matching (for virtualized / scrolling window)
+    const pureText = (catalogItem.pureText || '').trim();
+    const fileName = (catalogItem.fileName || '').trim();
+
+    if (pureText || fileName) {
+      const matches = [];
+      userTurns.forEach((u) => {
+        const tText = getCleanPromptText(u.element);
+        if (pureText && (tText.includes(pureText) || pureText.includes(tText.slice(0, 30)))) {
+          matches.push(u.element);
+        } else if (fileName && tText.includes(fileName)) {
+          matches.push(u.element);
+        }
+      });
+
+      if (matches.length === 1) {
+        return matches[0];
+      } else if (matches.length > 1) {
+        // Pick candidate closest to expected proportional position
+        const targetRatio = roundIndex !== undefined ? roundIndex / Math.max(1, totalRounds - 1) : 0;
+        const expectedDomIndex = Math.round(targetRatio * (userTurns.length - 1));
+        let best = matches[0];
+        let minDiff = Infinity;
+        for (const el of matches) {
+          const idx = userTurns.findIndex(u => u.element === el);
+          const diff = Math.abs(idx - expectedDomIndex);
+          if (diff < minDiff) {
+            minDiff = diff;
+            best = el;
+          }
+        }
+        return best;
+      }
+    }
+
+    // Tier 4: Proportional ratio fallback when partially virtualized
+    if (roundIndex !== undefined && totalRounds > 0 && userTurns.length > 0) {
+      const targetRatio = roundIndex / Math.max(1, totalRounds - 1);
+      const estimatedIdx = Math.max(0, Math.min(userTurns.length - 1, Math.round(targetRatio * (userTurns.length - 1))));
+      return userTurns[estimatedIdx].element;
     }
 
     return null;
   }
 
-  function navigateToPrompt(turnIndex) {
+  function navigateToPrompt(target) {
     try {
       const catalogData = State.getCatalogData();
-      const catalogItem = catalogData.find(item => item.turnIndex === turnIndex);
+      if (!catalogData || catalogData.length === 0) return;
+
+      let catalogItem = null;
+      if (target && typeof target === 'object') {
+        catalogItem = target;
+      } else {
+        catalogItem = catalogData.find(item =>
+          item.turnIndex === target ||
+          item.roundIndex === target ||
+          item.turnCounter === target
+        );
+      }
       if (!catalogItem) return;
 
       const scroller = getChatScrollContainer();
@@ -876,9 +924,9 @@
       let scrollUp = true;
       if (userTurns.length > 0) {
         const firstVisibleIdx = inferCatalogIndex(userTurns[0], catalogData);
-        const catalogItemIdx = catalogData.findIndex(item => item.turnIndex === catalogItem.turnIndex);
-        if (firstVisibleIdx !== -1 && catalogItemIdx !== -1) {
-          scrollUp = catalogItemIdx < firstVisibleIdx;
+        const targetRound = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
+        if (firstVisibleIdx !== -1) {
+          scrollUp = targetRound < firstVisibleIdx;
         } else {
           scrollUp = scroller.scrollTop > 300;
         }
@@ -1036,11 +1084,13 @@
 
     const scrollerRect = scroller.getBoundingClientRect();
     let activeTurnEl = null;
+    let activeTurnDomIndex = 0;
 
     for (let i = 0; i < userTurns.length; i++) {
       const rect = userTurns[i].getBoundingClientRect();
       if (rect.top <= scrollerRect.top + 250) {
         activeTurnEl = userTurns[i];
+        activeTurnDomIndex = i;
       } else {
         break;
       }
@@ -1048,21 +1098,44 @@
 
     if (!activeTurnEl && userTurns.length > 0) {
       activeTurnEl = userTurns[0];
+      activeTurnDomIndex = 0;
     }
     if (!activeTurnEl) return;
 
     const catalogData = State.getCatalogData();
     if (!catalogData || catalogData.length === 0) return;
 
-    let targetCatalogItem = null;
-    if (activeTurnEl.id) {
-      targetCatalogItem = catalogData.find(item => item.turnElementId === activeTurnEl.id);
-    }
-    if (!targetCatalogItem) {
-      const text = getCleanPromptText(activeTurnEl);
-      if (text) {
-        targetCatalogItem = catalogData.find(item => item.promptText === text || text.includes(item.promptText) || item.promptText.includes(text));
+    // 1. Try stamped round index
+    const stamped = activeTurnEl.getAttribute('data-enhancer-round-index');
+    if (stamped !== null) {
+      const parsed = parseInt(stamped, 10);
+      if (!isNaN(parsed)) {
+        const found = catalogData.find(item => item.roundIndex === parsed);
+        if (found) {
+          updateActiveTurnHighlight(found.turnIndex, found.turnCounter);
+          return;
+        }
       }
+    }
+
+    // 2. Direct 1:1 index match if all turns rendered
+    const totalRounds = new Set(catalogData.map(item => item.roundIndex)).size;
+    if (userTurns.length === totalRounds && activeTurnDomIndex < totalRounds) {
+      const found = catalogData.find(item => item.roundIndex === activeTurnDomIndex);
+      if (found) {
+        updateActiveTurnHighlight(found.turnIndex, found.turnCounter);
+        return;
+      }
+    }
+
+    // 3. Fallback content matching
+    const cleanText = getCleanPromptText(activeTurnEl);
+    let targetCatalogItem = null;
+    if (cleanText) {
+      targetCatalogItem = catalogData.find(item =>
+        (item.pureText && cleanText.includes(item.pureText)) ||
+        (item.fileName && cleanText.includes(item.fileName))
+      );
     }
 
     if (targetCatalogItem) {
@@ -1181,7 +1254,7 @@
 
     listItem.addEventListener('click', function () {
       updateActiveTurnHighlight(catalogItem.turnIndex, catalogItem.turnCounter);
-      navigateToPrompt(catalogItem.turnIndex);
+      navigateToPrompt(catalogItem);
     });
 
     listItem.addEventListener('keydown', function (event) {
