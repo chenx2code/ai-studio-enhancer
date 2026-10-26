@@ -56,20 +56,22 @@
                 if (!Array.isArray(turn)) return;
                 // turn[1] is imageContent
                 if (turn[1] && Array.isArray(turn[1])) {
-                  turn[1] = turn[1].length > 0 ? ['[OMITTED_IMAGE]'] : [];
+                  turn[1] = turn[1].map(() => '[OMITTED_IMAGE]');
                 }
                 // turn[3] is cloudFileContent
                 if (turn[3] && Array.isArray(turn[3])) {
-                  turn[3] = turn[3].length > 0 ? ['[OMITTED_CLOUD_FILE]'] : [];
+                  const safeStrings = turn[3].filter(item => typeof item === 'string' && item.length < 1000);
+                  turn[3] = safeStrings.length > 0 ? safeStrings : ['[OMITTED_CLOUD_FILE]'];
                 }
                 // turn[12] is inlineContent
                 if (turn[12] && Array.isArray(turn[12])) {
-                  turn[12] = turn[12].length > 0 ? ['image/[OMITTED]'] : [];
+                  turn[12] = turn[12].map(item => (typeof item === 'string' && item.startsWith('image/')) ? item : 'image/[OMITTED]');
                 }
                 // turn[23] is docContent
                 if (turn[23] && Array.isArray(turn[23])) {
-                  // Keep the mimetype for getFriendlyFileType, discard the actual content
-                  turn[23] = turn[23].length > 0 ? [turn[23][0]] : [];
+                  // Keep metadata/mimetype/filename (short strings < 1000 chars), discard heavy base64 data
+                  const safeStrings = turn[23].filter(item => typeof item === 'string' && item.length < 1000);
+                  turn[23] = safeStrings.length > 0 ? safeStrings : ['Document'];
                 }
               });
             }

@@ -36,8 +36,28 @@
     "description": "The header text for the catalog panel."
   },
   "catalogEmptyState": {
-    "message": "No conversation prompts found",
+    "message": "No conversation yet",
     "description": "Message displayed when the catalog is empty or no user prompts are available."
+  },
+  "catalogEmptyTitle": {
+    "message": "No conversation yet",
+    "description": "Empty state title."
+  },
+  "catalogEmptyDesc": {
+    "message": "Prompts will appear here automatically",
+    "description": "Empty state description."
+  },
+  "closeCatalogTitle": {
+    "message": "Close catalog",
+    "description": "Tooltip text for closing the catalog panel."
+  },
+  "imageLabel": {
+    "message": "Image",
+    "description": "Image type label."
+  },
+  "fileLabel": {
+    "message": "File",
+    "description": "File type label."
   },
   "tooltipScrollToBottom": {
     "message": "Scroll to bottom",
