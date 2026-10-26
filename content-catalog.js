@@ -425,27 +425,6 @@
     return null;
   }
 
-  function highlightElement(element) {
-    if (!element) return;
-    element.classList.remove('catalog-target-highlight');
-    // Trigger reflow to restart CSS animation
-    void element.offsetWidth;
-    element.classList.add('catalog-target-highlight');
-
-    const originalBackground = element.style.backgroundColor;
-    const originalTransition = element.style.transition;
-    element.style.transition = 'background-color 0.3s ease';
-    element.style.backgroundColor = 'rgba(66, 133, 244, 0.1)';
-
-    setTimeout(() => {
-      element.style.backgroundColor = originalBackground;
-      setTimeout(() => {
-        element.style.transition = originalTransition;
-        element.classList.remove('catalog-target-highlight');
-      }, Utils.CONSTANTS.HIGHLIGHT_FADE_OUT_MS);
-    }, Utils.CONSTANTS.HIGHLIGHT_DURATION_MS);
-  }
-
   function navigateToPrompt(turnIndex) {
     try {
       const catalogData = State.getCatalogData();
@@ -511,11 +490,9 @@
 
           if (Math.abs(freshDelta) > 15) {
             activeNavigationCancel = animateScrollTo(scroller, scroller.scrollTop + freshDelta, 140, () => {
-              highlightElement(freshTarget);
               cleanup();
             });
           } else {
-            highlightElement(freshTarget);
             cleanup();
           }
         });
