@@ -32,6 +32,7 @@
     },
     id: {
       exportButton: 'export-markdown-btn',
+      obsidianButton: 'export-obsidian-btn',
       catalogButton: 'catalog-toggle-btn',
       catalogPanel: 'catalog-side-panel',
       catalogListContainer: 'catalog-list-container',
@@ -165,7 +166,7 @@
     }
   }
 
-  function createToolbarButton(id, iconName, tooltipText, onClick, variant = 'icon-borderless') {
+  function createToolbarButton(id, iconName, tooltipText, onClick, variant = 'icon-borderless', customSvg = null) {
     const button = document.createElement('button');
     button.id = id;
     button.setAttribute('ms-button', '');
@@ -179,10 +180,14 @@
       button.classList.add('ms-button-borderless', 'ms-button-icon');
     }
 
-    const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol';
-    icon.textContent = iconName;
-    button.appendChild(icon);
+    if (customSvg) {
+      button.innerHTML = customSvg;
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'material-symbols-outlined notranslate ms-button-icon-symbol';
+      icon.textContent = iconName;
+      button.appendChild(icon);
+    }
 
     button.addEventListener('mouseenter', () => showTooltip(button, tooltipText));
     button.addEventListener('mouseleave', hideTooltip);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.1.21",
+  "version": "1.1.22",
   "default_locale": "en",
   "description": "__MSG_extensionDescription__",
   "permissions": [
@@ -21,6 +21,7 @@
         "content-utils.js",
         "content-state.js",
         "content-markdown.js",
+        "content-obsidian.js",
         "content-catalog.js",
         "content-prompt-history-navigation.js",
         "content-notification.js",

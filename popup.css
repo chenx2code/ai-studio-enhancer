@@ -217,6 +217,67 @@ body {
   margin: 0 14px;
 }
 
+.setting-field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  transition: opacity 0.25s cubic-bezier(0.2, 0, 0, 1), filter 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.setting-field-row.is-disabled {
+  opacity: 0.42;
+  pointer-events: none;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.setting-field-row.is-disabled .m3-text-input {
+  background-color: var(--md-sys-color-surface-container-high);
+  cursor: not-allowed;
+}
+
+.setting-leading-icon.obsidian-icon {
+  color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  .setting-leading-icon.obsidian-icon {
+    color: #a78bfa;
+    background-color: rgba(167, 139, 250, 0.16);
+  }
+}
+
+.input-container {
+  flex-shrink: 0;
+  width: 105px;
+}
+
+.m3-text-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--md-sys-color-on-surface);
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.m3-text-input:focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 2px rgba(11, 87, 208, 0.15);
+}
+
+.m3-text-input::placeholder {
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.6;
+}
+
 /* Material Design 3 Switch */
 .switch-container {
   position: relative;

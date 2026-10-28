@@ -158,5 +158,77 @@
   "untitledPrompt": {
     "message": "未命名提问",
     "description": "无文本且无附件时的默认提问标题。"
+  },
+  "tooltipObsidian": {
+    "message": "一键导出至 Obsidian",
+    "description": "导出至 Obsidian 按钮的工具提示文本。"
+  },
+  "obsidianSectionTitle": {
+    "message": "Obsidian 设置",
+    "description": "弹窗中 Obsidian 设置区域的标题。"
+  },
+  "obsidianPromptFolderTitle": {
+    "message": "导出前询问目标文件夹",
+    "description": "是否每次导出前询问目标文件夹的选项标题。"
+  },
+  "obsidianPromptFolderDesc": {
+    "message": "每次导出时弹窗选择目标文件夹",
+    "description": "是否每次导出前询问目标文件夹的选项描述。"
+  },
+  "obsidianFolderTitle": {
+    "message": "默认目标文件夹",
+    "description": "默认目标文件夹选项标题。"
+  },
+  "obsidianFolderDesc": {
+    "message": "关闭上方开关时直接导出到此文件夹",
+    "description": "默认目标文件夹选项描述。"
+  },
+  "obsidianVaultTitle": {
+    "message": "Vault 仓库名称",
+    "description": "Obsidian Vault 仓库名称选项标题。"
+  },
+  "obsidianVaultDesc": {
+    "message": "留空则在当前活动的 Vault 中创建",
+    "description": "Obsidian Vault 仓库名称选项描述。"
+  },
+  "obsidianModalTitle": {
+    "message": "导出至 Obsidian",
+    "description": "确认导出弹窗标题。"
+  },
+  "obsidianModalFolderLabel": {
+    "message": "目标文件夹",
+    "description": "弹窗中目标文件夹输入框标签。"
+  },
+  "obsidianModalFolderPlaceholder": {
+    "message": "例如: AI Studio 或 Work/AI",
+    "description": "弹窗中目标文件夹输入框占位符。"
+  },
+  "obsidianModalTitleLabel": {
+    "message": "笔记标题",
+    "description": "弹窗中笔记标题输入框标签。"
+  },
+  "obsidianModalRecentLabel": {
+    "message": "快捷历史标签:",
+    "description": "弹窗中最近使用文件夹历史标签前缀。"
+  },
+  "obsidianModalSetDefault": {
+    "message": "设为默认文件夹且不再提醒",
+    "description": "弹窗中记住默认文件夹的复选框文本。"
+  },
+  "obsidianLoading": {
+    "message": "正在准备导出至 Obsidian...",
+    "description": "正在导出至 Obsidian 时的反馈文本。"
+  },
+  "obsidianSuccess": {
+    "message": "已导出至 Obsidian！",
+    "description": "成功导出至 Obsidian 后的反馈文本。"
+  },
+  "cancelBtn": {
+    "message": "取消",
+    "description": "取消按钮文本。"
+  },
+  "confirmExportBtn": {
+    "message": "确认导出",
+    "description": "确认导出按钮文本。"
   }
 }
