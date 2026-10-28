@@ -123,6 +123,18 @@
     "message": "导出时包含当前账号邮箱",
     "description": "弹窗中切换开关的标签文本。"
   },
+  "settingIncludePromptNumberTitle": {
+    "message": "包含提问序号",
+    "description": "包含提问序号选项的标题。"
+  },
+  "settingIncludePromptNumberDesc": {
+    "message": "在导出的每个提问标题前添加轮次序号（如：## 1.）",
+    "description": "包含提问序号选项的描述。"
+  },
+  "settingIncludePromptNumber": {
+    "message": "导出时在提问标题前添加轮次序号",
+    "description": "弹窗中切换开关的标签文本。"
+  },
   "settingEnableNotificationsTitle": {
     "message": "桌面通知",
     "description": "桌面通知选项的标题。"

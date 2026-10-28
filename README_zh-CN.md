@@ -18,6 +18,7 @@ AI Studio Enhancer 是一款旨在全面提升 Google AI Studio 使用体验的�
 
 *   **一键下载:** 在对话页面的工具栏上添加一个易于操作的"下载对话为 Markdown 格式 (.md)"按钮。
 *   **自定义导出选项:** 点击浏览器工具栏的插件图标，可以打开设置菜单，自由切换是否包含：
+    *   提问轮次序号 (Prompt numbers，例如 `## 1.`)
     *   模型的思考过程 (Thought process)
     *   对话原链接 (Original link)
     *   谷歌账号邮箱 (Account email)

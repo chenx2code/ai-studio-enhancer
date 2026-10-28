@@ -20,6 +20,7 @@ Main use cases include conversation archiving, content referencing, interaction 
 
 *   **One-Click Download:** Adds an easy-to-use "Download conversation as Markdown" button to the conversation page toolbar.
 *   **Customizable Export:** Click the extension icon in your browser toolbar to open the settings popup, where you can toggle:
+    *   Include prompt sequence numbers (e.g. `## 1.`)
     *   Include model's thought process
     *   Include original conversation link
     *   Include Google account email

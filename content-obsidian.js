@@ -40,6 +40,10 @@
   };
 
   const DEFAULT_SETTINGS = {
+    includeThoughts: false,
+    includeLink: false,
+    includeAccount: false,
+    includePromptNumber: true,
     obsidianFolder: 'AI Studio',
     obsidianVault: '',
     obsidianSilent: true,
@@ -82,6 +86,7 @@
       'includeThoughts',
       'includeLink',
       'includeAccount',
+      'includePromptNumber',
       'obsidianFolder',
       'obsidianVault',
       'obsidianSilent',
@@ -96,6 +101,7 @@
           includeThoughts: res.includeThoughts !== undefined ? !!res.includeThoughts : false,
           includeLink: res.includeLink !== undefined ? !!res.includeLink : false,
           includeAccount: res.includeAccount !== undefined ? !!res.includeAccount : false,
+          includePromptNumber: res.includePromptNumber !== undefined ? !!res.includePromptNumber : true,
           obsidianFolder: res.obsidianFolder !== undefined ? String(res.obsidianFolder) : DEFAULT_SETTINGS.obsidianFolder,
           obsidianVault: res.obsidianVault !== undefined ? String(res.obsidianVault) : DEFAULT_SETTINGS.obsidianVault,
           obsidianSilent: res.obsidianSilent !== undefined ? !!res.obsidianSilent : DEFAULT_SETTINGS.obsidianSilent,
@@ -418,7 +424,8 @@
       const markdown = global.__AIStudioEnhancer__.Markdown.assembleMarkdown(conversationHistory, promptTitle, {
         includeThoughts: settings.includeThoughts,
         includeLink: settings.includeLink,
-        includeAccount: settings.includeAccount
+        includeAccount: settings.includeAccount,
+        includePromptNumber: settings.includePromptNumber
       });
 
       // 3. Sanitize title and compute note path inside Obsidian

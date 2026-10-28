@@ -123,6 +123,18 @@
     "message": "Include account email",
     "description": "Label for the toggle switch to include account email."
   },
+  "settingIncludePromptNumberTitle": {
+    "message": "Include prompt numbers",
+    "description": "Title for include prompt numbers setting."
+  },
+  "settingIncludePromptNumberDesc": {
+    "message": "Add sequence numbers (e.g. ## 1.) to prompt headings",
+    "description": "Description for include prompt numbers setting."
+  },
+  "settingIncludePromptNumber": {
+    "message": "Include sequence numbers in prompt headings",
+    "description": "Label for the toggle switch to include prompt sequence numbers."
+  },
   "settingEnableNotificationsTitle": {
     "message": "Desktop notifications",
     "description": "Title for desktop notifications setting."
