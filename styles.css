@@ -270,15 +270,6 @@ body[data-theme="dark"],
   display: none;
 }
 
-/* Header Actions */
-.catalog-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.catalog-header-action-btn,
 .catalog-close-btn {
   background: transparent;
   border: none;
@@ -297,35 +288,29 @@ body[data-theme="dark"],
   padding: 0;
 }
 
-.catalog-header-action-btn:hover,
 .catalog-close-btn:hover {
   background-color: var(--catalog-btn-hover-bg);
   color: var(--catalog-btn-hover-color);
 }
 
-.catalog-obsidian-btn:hover,
 #export-obsidian-btn:hover {
   background-color: rgba(124, 58, 237, 0.12) !important;
   color: #7c3aed !important;
 }
 
 @media (prefers-color-scheme: dark) {
-  .catalog-obsidian-btn:hover,
   #export-obsidian-btn:hover {
     background-color: rgba(167, 139, 250, 0.16) !important;
     color: #a78bfa !important;
   }
 }
 
-.catalog-obsidian-btn svg,
 #export-obsidian-btn svg {
   width: 14px;
   height: 14px;
   transform: translateY(-0.5px);
 }
 
-.catalog-obsidian-btn.is-loading svg,
-.catalog-obsidian-btn.is-success svg,
 #export-obsidian-btn.is-loading svg,
 #export-obsidian-btn.is-success svg {
   width: 16px;
@@ -334,14 +319,12 @@ body[data-theme="dark"],
 }
 
 /* Button States: Loading / Success */
-.catalog-obsidian-btn.is-loading,
 #export-obsidian-btn.is-loading {
   color: #7c3aed !important;
   background-color: rgba(124, 58, 237, 0.12) !important;
   cursor: default;
 }
 
-.catalog-obsidian-btn.is-success,
 #export-obsidian-btn.is-success {
   color: #137333 !important;
   background-color: #e6f4ea !important;
@@ -349,7 +332,6 @@ body[data-theme="dark"],
 }
 
 @media (prefers-color-scheme: dark) {
-  .catalog-obsidian-btn.is-success,
   #export-obsidian-btn.is-success {
     color: #81c995 !important;
     background-color: rgba(129, 201, 149, 0.16) !important;
@@ -383,7 +365,6 @@ body[data-theme="dark"],
   }
 }
 
-.catalog-header-action-btn:focus-visible,
 .catalog-close-btn:focus-visible,
 #export-obsidian-btn:focus-visible {
   outline: 2px solid var(--catalog-primary);

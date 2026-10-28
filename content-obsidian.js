@@ -181,14 +181,10 @@
     }, 150);
   }
 
-  // Update Obsidian export button state in top toolbar and catalog header
+  // Update Obsidian export button state in top toolbar
   function setObsidianButtonState(state, tooltip) {
-    const buttons = [
-      document.getElementById(Utils.SELECTORS.id.obsidianButton),
-      document.getElementById('catalog-obsidian-btn')
-    ].filter(Boolean);
-
-    if (buttons.length === 0) return;
+    const btn = document.getElementById(Utils.SELECTORS.id.obsidianButton);
+    if (!btn) return;
 
     const strings = getStrings();
     const defaultTooltip =
@@ -200,35 +196,33 @@
 
     const tip = tooltip || defaultTooltip;
 
-    buttons.forEach((btn) => {
-      btn.dataset.state = state;
-      btn.title = tip;
-      btn.setAttribute('aria-label', tip);
+    btn.dataset.state = state;
+    btn.title = tip;
+    btn.setAttribute('aria-label', tip);
 
-      if (state === 'loading') {
-        btn.classList.remove('is-success');
-        btn.classList.add('is-loading');
-        btn.innerHTML = `
-          <span class="enhancer-spinner-composited">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <circle cx="12" cy="12" r="9.5" stroke-opacity="0.25"></circle>
-              <path d="M12 2.5 A 9.5 9.5 0 0 1 21.5 12"></path>
-            </svg>
-          </span>
-        `;
-      } else if (state === 'success') {
-        btn.classList.remove('is-loading');
-        btn.classList.add('is-success');
-        btn.innerHTML = `
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+    if (state === 'loading') {
+      btn.classList.remove('is-success');
+      btn.classList.add('is-loading');
+      btn.innerHTML = `
+        <span class="enhancer-spinner-composited">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9.5" stroke-opacity="0.25"></circle>
+            <path d="M12 2.5 A 9.5 9.5 0 0 1 21.5 12"></path>
           </svg>
-        `;
-      } else {
-        btn.classList.remove('is-loading', 'is-success');
-        btn.innerHTML = getObsidianIconSvg();
-      }
-    });
+        </span>
+      `;
+    } else if (state === 'success') {
+      btn.classList.remove('is-loading');
+      btn.classList.add('is-success');
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      `;
+    } else {
+      btn.classList.remove('is-loading', 'is-success');
+      btn.innerHTML = getObsidianIconSvg();
+    }
   }
 
   // Show interactive Obsidian folder and title confirmation modal
