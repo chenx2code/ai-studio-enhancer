@@ -1036,17 +1036,46 @@
 
     const header = document.createElement('div');
     header.className = 'catalog-header header';
+    const obsidianSvg = global.__AIStudioEnhancer__.Obsidian ? global.__AIStudioEnhancer__.Obsidian.getObsidianIconSvg() : '';
     header.innerHTML = `
       <div class="catalog-title-group">
         <span class="catalog-title">${chrome.i18n.getMessage('catalogHeader')}</span>
         <span id="catalog-toc-badge" class="catalog-toc-badge is-hidden">0</span>
       </div>
-      <button class="catalog-close-btn" title="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}" aria-label="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
-        </svg>
-      </button>
+      <div class="catalog-header-actions">
+        <button id="catalog-obsidian-btn" class="catalog-header-action-btn catalog-obsidian-btn" title="${chrome.i18n.getMessage('tooltipObsidian') || 'Export to Obsidian'}" aria-label="${chrome.i18n.getMessage('tooltipObsidian') || 'Export to Obsidian'}" data-state="idle">
+          ${obsidianSvg}
+        </button>
+        <button id="catalog-export-btn" class="catalog-header-action-btn catalog-export-btn" title="${chrome.i18n.getMessage('tooltipDownloadMarkdown') || 'Download Markdown'}" aria-label="${chrome.i18n.getMessage('tooltipDownloadMarkdown') || 'Download Markdown'}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+          </svg>
+        </button>
+        <button class="catalog-close-btn" title="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}" aria-label="${chrome.i18n.getMessage('closeCatalogTitle') || 'Close'}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+          </svg>
+        </button>
+      </div>
     `;
+
+    const obsidianBtn = header.querySelector('#catalog-obsidian-btn');
+    if (obsidianBtn) {
+      obsidianBtn.addEventListener('click', () => {
+        if (global.__AIStudioEnhancer__.Obsidian) {
+          global.__AIStudioEnhancer__.Obsidian.handleObsidianExport();
+        }
+      });
+    }
+
+    const exportBtn = header.querySelector('#catalog-export-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        if (global.__AIStudioEnhancer__.Markdown) {
+          global.__AIStudioEnhancer__.Markdown.exportToMarkdown();
+        }
+      });
+    }
 
     const closeBtn = header.querySelector('.catalog-close-btn');
     closeBtn.addEventListener('click', () => toggleCatalog(false));

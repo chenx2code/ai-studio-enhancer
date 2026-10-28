@@ -11,6 +11,7 @@
   const Utils = Enhancer.Utils;
   const State = Enhancer.State;
   const Markdown = Enhancer.Markdown;
+  const Obsidian = Enhancer.Obsidian;
   const Catalog = Enhancer.Catalog;
   const Notification = Enhancer.Notification;
   const PromptHistoryNavigation = Enhancer.PromptHistoryNavigation;
@@ -73,6 +74,7 @@
         currentlyObservedContainer = null;
       }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.obsidianButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
@@ -93,6 +95,7 @@
         currentlyObservedContainer = null;
       }
       document.getElementById(Utils.SELECTORS.id.exportButton)?.remove();
+      document.getElementById(Utils.SELECTORS.id.obsidianButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.scrollToBottomButton)?.remove();
       document.getElementById(Utils.SELECTORS.id.catalogPanel)?.remove();
@@ -111,6 +114,21 @@
         const moreButton = toolbarRight.querySelector(Utils.SELECTORS.query.moreActionsButton);
         if (moreButton) moreButton.parentElement.insertBefore(exportButton, moreButton);
         else toolbarRight.appendChild(exportButton);
+      }
+
+      // --- Inject Obsidian Export Button ---
+      if (Obsidian && !document.getElementById(Utils.SELECTORS.id.obsidianButton)) {
+        const obsidianButton = Utils.createToolbarButton(
+          Utils.SELECTORS.id.obsidianButton,
+          'obsidian',
+          chrome.i18n.getMessage('tooltipObsidian') || 'Export to Obsidian',
+          Obsidian.handleObsidianExport,
+          'icon-borderless',
+          Obsidian.getObsidianIconSvg()
+        );
+        const moreButton = toolbarRight.querySelector(Utils.SELECTORS.query.moreActionsButton);
+        if (moreButton) moreButton.parentElement.insertBefore(obsidianButton, moreButton);
+        else toolbarRight.appendChild(obsidianButton);
       }
 
       // --- Inject Catalog Button ---

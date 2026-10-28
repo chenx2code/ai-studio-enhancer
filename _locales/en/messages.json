@@ -158,5 +158,77 @@
   "untitledPrompt": {
     "message": "Untitled Prompt",
     "description": "Default prompt title when text and attachments are absent."
+  },
+  "tooltipObsidian": {
+    "message": "Export conversation to Obsidian",
+    "description": "Tooltip text for Obsidian export button."
+  },
+  "obsidianSectionTitle": {
+    "message": "Obsidian Settings",
+    "description": "Section header for Obsidian preferences in popup."
+  },
+  "obsidianPromptFolderTitle": {
+    "message": "Ask folder before export",
+    "description": "Setting title for prompting destination folder before export."
+  },
+  "obsidianPromptFolderDesc": {
+    "message": "Prompt to choose a destination folder on each export",
+    "description": "Setting description for prompting destination folder."
+  },
+  "obsidianFolderTitle": {
+    "message": "Default target folder",
+    "description": "Setting title for default Obsidian folder."
+  },
+  "obsidianFolderDesc": {
+    "message": "Used when the switch above is disabled",
+    "description": "Setting description for default Obsidian folder."
+  },
+  "obsidianVaultTitle": {
+    "message": "Vault name",
+    "description": "Setting title for Obsidian vault name."
+  },
+  "obsidianVaultDesc": {
+    "message": "Leave blank for active vault",
+    "description": "Setting description for Obsidian vault name."
+  },
+  "obsidianModalTitle": {
+    "message": "Export to Obsidian",
+    "description": "Title of the Obsidian export confirmation modal dialog."
+  },
+  "obsidianModalFolderLabel": {
+    "message": "Target Folder",
+    "description": "Label for destination folder input in modal."
+  },
+  "obsidianModalFolderPlaceholder": {
+    "message": "e.g. AI Studio or Work/AI",
+    "description": "Placeholder for destination folder input in modal."
+  },
+  "obsidianModalTitleLabel": {
+    "message": "Note Title",
+    "description": "Label for note title input in modal."
+  },
+  "obsidianModalRecentLabel": {
+    "message": "Recent folders:",
+    "description": "Label prefix for recent folder history chips."
+  },
+  "obsidianModalSetDefault": {
+    "message": "Set as default folder and do not ask again",
+    "description": "Checkbox label to save default folder."
+  },
+  "obsidianLoading": {
+    "message": "Exporting to Obsidian...",
+    "description": "Status text while Obsidian export is in progress."
+  },
+  "obsidianSuccess": {
+    "message": "Exported to Obsidian!",
+    "description": "Status text after successful Obsidian export."
+  },
+  "cancelBtn": {
+    "message": "Cancel",
+    "description": "Cancel button text."
+  },
+  "confirmExportBtn": {
+    "message": "Export",
+    "description": "Confirm export button text."
   }
 }
