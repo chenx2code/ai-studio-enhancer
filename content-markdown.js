@@ -15,15 +15,17 @@
     }
 
     // Read the settings from storage before exporting (preserving existing user preferences)
-    chrome.storage.local.get(['includeThoughts', 'includeLink', 'includeAccount'], (result) => {
+    chrome.storage.local.get(['includeThoughts', 'includeLink', 'includeAccount', 'includePromptNumber'], (result) => {
       const includeThoughts = result.includeThoughts || false;
       const includeLink = result.includeLink || false;
       const includeAccount = result.includeAccount || false;
+      const includePromptNumber = result.includePromptNumber !== undefined ? Boolean(result.includePromptNumber) : true;
 
       const markdownOutput = assembleMarkdown(conversationHistory, promptTitle, {
         includeThoughts,
         includeLink,
-        includeAccount
+        includeAccount,
+        includePromptNumber
       });
 
       const filename = sanitizeFilename(promptTitle);
@@ -118,7 +120,7 @@
    * - Multiple attachments: rendered inline on a single line (> [Image 1] [Image 2] ...)
    * - Single attachment: rendered on its own line (> [Image])
    */
-  function formatUserTurn(round, roundElements, isChinese) {
+  function formatUserTurn(round, roundElements, isChinese, options = {}) {
     const Utils = global.__AIStudioEnhancer__.Utils;
 
     // 1. Combine all user text in this round
@@ -151,7 +153,14 @@
       }
     });
 
-    const promptLabel = chrome.i18n.getMessage('promptLabel') || (isChinese ? '用户提问' : 'User Prompt');
+    const shouldIncludeNumber = options.includePromptNumber !== undefined
+      ? !!options.includePromptNumber
+      : true;
+    const turnNumber = options.turnNumber;
+    const includeNumber = shouldIncludeNumber && !!turnNumber;
+
+    const basePromptLabel = chrome.i18n.getMessage('promptLabel') || (isChinese ? '用户提问' : 'User Prompt');
+    const promptLabel = includeNumber ? `${basePromptLabel} #${turnNumber}` : basePromptLabel;
     let heading = '';
     let quoteBlock = '';
     let attachmentBlock = '';
@@ -200,7 +209,8 @@
       }
     }
 
-    const finalHeading = `## ${heading}`;
+    const prefix = includeNumber ? `${turnNumber}. ` : '';
+    const finalHeading = `## ${prefix}${heading}`;
     const parts = [finalHeading];
     if (attachmentBlock) {
       parts.push(attachmentBlock);
@@ -280,6 +290,7 @@
     const includeThoughts = 'includeThoughts' in safeSettings ? Boolean(safeSettings.includeThoughts) : false;
     const includeAccount = 'includeAccount' in safeSettings ? Boolean(safeSettings.includeAccount) : false;
     const includeLink = 'includeLink' in safeSettings ? Boolean(safeSettings.includeLink) : false;
+    const includePromptNumber = 'includePromptNumber' in safeSettings ? Boolean(safeSettings.includePromptNumber) : true;
 
     const rounds = groupConversationHistory(conversationHistory);
     const isChinese = detectLanguage(promptTitle, rounds);
@@ -314,7 +325,7 @@
     const userTurnElements = getUserTurnDOMElements();
     let userChunkCounter = 0;
 
-    rounds.forEach(round => {
+    rounds.forEach((round, roundIndex) => {
       const startDomIndex = userChunkCounter;
       const endDomIndex = userChunkCounter + round.userChunks.length - 1;
       userChunkCounter += round.userChunks.length;
@@ -326,7 +337,11 @@
         }
       }
 
-      const userMarkdown = formatUserTurn(round, roundElements, isChinese);
+      const turnNumber = roundIndex + 1;
+      const userMarkdown = formatUserTurn(round, roundElements, isChinese, {
+        includePromptNumber,
+        turnNumber
+      });
       if (userMarkdown) {
         parts.push(userMarkdown);
       }

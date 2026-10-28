@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS = {
   includeThoughts: false,
   includeLink: false,
   includeAccount: false,
+  includePromptNumber: true,
   enableNotifications: true,
   obsidianFolder: 'AI Studio',
   obsidianVault: '',
@@ -21,6 +22,8 @@ const I18N_STRINGS = {
     linkDesc: '导出 Markdown 时附带原始对话链接',
     accountTitle: '包含账号邮箱',
     accountDesc: '导出 Markdown 时附带当前账号信息',
+    promptNumberTitle: '包含提问序号',
+    promptNumberDesc: '在导出的每个提问标题前添加轮次序号（如：## 1.）',
     notificationSectionTitle: '通知提醒',
     notificationsTitle: '桌面通知',
     notificationsDesc: '生成完毕时发送通知（仅后台标签触发）',
@@ -42,6 +45,8 @@ const I18N_STRINGS = {
     linkDesc: 'Add original chat link to Markdown export',
     accountTitle: 'Include account email',
     accountDesc: 'Add Google account email to Markdown header',
+    promptNumberTitle: 'Include prompt numbers',
+    promptNumberDesc: 'Add sequence numbers (e.g. ## 1.) to prompt headings',
     notificationSectionTitle: 'Notifications',
     notificationsTitle: 'Desktop notifications',
     notificationsDesc: 'Notify when generation is complete (background only)',
@@ -61,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const thoughtsToggle = document.getElementById('includeThoughts');
   const linkToggle = document.getElementById('includeLink');
   const accountToggle = document.getElementById('includeAccount');
+  const promptNumberToggle = document.getElementById('includePromptNumber');
   const notificationsToggle = document.getElementById('enableNotifications');
 
   const obsidianSectionTitle = document.getElementById('obsidianSectionTitle');
@@ -83,6 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const linkDesc = document.getElementById('linkDesc');
   const accountTitle = document.getElementById('accountTitle');
   const accountDesc = document.getElementById('accountDesc');
+  const promptNumberTitle = document.getElementById('promptNumberTitle');
+  const promptNumberDesc = document.getElementById('promptNumberDesc');
   const notificationSectionTitle = document.getElementById('notificationSectionTitle');
   const notificationsTitle = document.getElementById('notificationsTitle');
   const notificationsDesc = document.getElementById('notificationsDesc');
@@ -121,6 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (linkDesc) linkDesc.textContent = getMsg('settingIncludeLinkDesc', strings.linkDesc);
   if (accountTitle) accountTitle.textContent = getMsg('settingIncludeAccountTitle', strings.accountTitle);
   if (accountDesc) accountDesc.textContent = getMsg('settingIncludeAccountDesc', strings.accountDesc);
+  if (promptNumberTitle) promptNumberTitle.textContent = getMsg('settingIncludePromptNumberTitle', strings.promptNumberTitle);
+  if (promptNumberDesc) promptNumberDesc.textContent = getMsg('settingIncludePromptNumberDesc', strings.promptNumberDesc);
   if (notificationSectionTitle) notificationSectionTitle.textContent = getMsg('notificationSectionTitle', strings.notificationSectionTitle);
   if (notificationsTitle) notificationsTitle.textContent = getMsg('settingEnableNotificationsTitle', strings.notificationsTitle);
   if (notificationsDesc) notificationsDesc.textContent = getMsg('settingEnableNotificationsDesc', strings.notificationsDesc);
@@ -167,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'includeThoughts',
       'includeLink',
       'includeAccount',
+      'includePromptNumber',
       'enableNotifications',
       'obsidianPromptFolder',
       'obsidianFolder',
@@ -180,6 +191,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (accountToggle) {
         accountToggle.checked = result.includeAccount !== undefined ? !!result.includeAccount : DEFAULT_SETTINGS.includeAccount;
+      }
+      if (promptNumberToggle) {
+        promptNumberToggle.checked = result.includePromptNumber !== undefined ? !!result.includePromptNumber : DEFAULT_SETTINGS.includePromptNumber;
       }
       if (notificationsToggle) {
         notificationsToggle.checked = result.enableNotifications !== undefined ? !!result.enableNotifications : DEFAULT_SETTINGS.enableNotifications;
@@ -195,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (thoughtsToggle) thoughtsToggle.checked = localStorage.getItem('includeThoughts') === 'true';
       if (linkToggle) linkToggle.checked = localStorage.getItem('includeLink') === 'true';
       if (accountToggle) accountToggle.checked = localStorage.getItem('includeAccount') === 'true';
+      if (promptNumberToggle) promptNumberToggle.checked = localStorage.getItem('includePromptNumber') !== 'false';
       if (notificationsToggle) notificationsToggle.checked = localStorage.getItem('enableNotifications') !== 'false';
       const isPrompt = localStorage.getItem('obsidianPromptFolder') === 'true';
       if (obsidianPromptFolder) obsidianPromptFolder.checked = isPrompt;
@@ -205,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (thoughtsToggle) thoughtsToggle.checked = DEFAULT_SETTINGS.includeThoughts;
       if (linkToggle) linkToggle.checked = DEFAULT_SETTINGS.includeLink;
       if (accountToggle) accountToggle.checked = DEFAULT_SETTINGS.includeAccount;
+      if (promptNumberToggle) promptNumberToggle.checked = DEFAULT_SETTINGS.includePromptNumber;
       if (notificationsToggle) notificationsToggle.checked = DEFAULT_SETTINGS.enableNotifications;
       if (obsidianPromptFolder) obsidianPromptFolder.checked = DEFAULT_SETTINGS.obsidianPromptFolder;
       if (obsidianFolder) obsidianFolder.value = DEFAULT_SETTINGS.obsidianFolder;
@@ -234,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
       includeThoughts: thoughtsToggle ? thoughtsToggle.checked : DEFAULT_SETTINGS.includeThoughts,
       includeLink: linkToggle ? linkToggle.checked : DEFAULT_SETTINGS.includeLink,
       includeAccount: accountToggle ? accountToggle.checked : DEFAULT_SETTINGS.includeAccount,
+      includePromptNumber: promptNumberToggle ? promptNumberToggle.checked : DEFAULT_SETTINGS.includePromptNumber,
       enableNotifications: notificationsToggle ? notificationsToggle.checked : DEFAULT_SETTINGS.enableNotifications,
       obsidianPromptFolder: obsidianPromptFolder ? obsidianPromptFolder.checked : false,
       obsidianFolder: obsidianFolder ? obsidianFolder.value.trim() || 'AI Studio' : 'AI Studio',
@@ -249,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('includeThoughts', newSettings.includeThoughts);
         localStorage.setItem('includeLink', newSettings.includeLink);
         localStorage.setItem('includeAccount', newSettings.includeAccount);
+        localStorage.setItem('includePromptNumber', newSettings.includePromptNumber);
         localStorage.setItem('enableNotifications', newSettings.enableNotifications);
         localStorage.setItem('obsidianPromptFolder', newSettings.obsidianPromptFolder);
         localStorage.setItem('obsidianFolder', newSettings.obsidianFolder);
@@ -261,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (thoughtsToggle) thoughtsToggle.addEventListener('change', saveSettings);
   if (linkToggle) linkToggle.addEventListener('change', saveSettings);
   if (accountToggle) accountToggle.addEventListener('change', saveSettings);
+  if (promptNumberToggle) promptNumberToggle.addEventListener('change', saveSettings);
   if (notificationsToggle) notificationsToggle.addEventListener('change', saveSettings);
 
   if (obsidianPromptFolder) {
