@@ -391,6 +391,7 @@
 
   let activeNavigationCancel = null;
   let navigationClearTimer = null;
+  let navigationSafetyTimer = null;
   let isNavigating = false;
 
   // Retrieve the primary scrollable container for AI Studio chat history
@@ -659,10 +660,21 @@
         clearTimeout(navigationClearTimer);
         navigationClearTimer = null;
       }
+      if (navigationSafetyTimer) {
+        clearTimeout(navigationSafetyTimer);
+        navigationSafetyTimer = null;
+      }
 
       isNavigating = true;
       const clickTime = performance.now();
       const minFeedbackDurationMs = 380; // Ensure visible feedback even for short distances
+
+      // Global safety timer: ensure navigation and flight highlight ALWAYS terminates within 1000ms
+      navigationSafetyTimer = setTimeout(() => {
+        if (isNavigating) {
+          cleanup(false);
+        }
+      }, 1000);
 
       // 2. Update active highlight in the sidebar list immediately
       const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
@@ -734,6 +746,10 @@
       };
 
       const cleanup = (immediate = false) => {
+        if (navigationSafetyTimer) {
+          clearTimeout(navigationSafetyTimer);
+          navigationSafetyTimer = null;
+        }
         clearNavigatingState(immediate);
         if (activeNavigationCancel) {
           activeNavigationCancel();
@@ -777,14 +793,17 @@
         const subTarget = resolveSubTarget(targetEl, catalogItem);
         const targetRect = subTarget.getBoundingClientRect();
         const scrollerRect = scroller.getBoundingClientRect();
-        const desiredTop = 80;
+        const isAttachment = catalogItem.type === 'image' || catalogItem.type === 'file';
+        const desiredTop = isAttachment
+          ? Math.max(80, Math.round((scrollerRect.height - targetRect.height) / 2))
+          : 80;
 
         const delta = (targetRect.top - scrollerRect.top) - desiredTop;
         const targetScrollTop = scroller.scrollTop + delta;
         const totalDistance = Math.abs(delta);
 
-        // Landing Stabilization Anchor: dynamically pins the target to desiredTop (80px)
-        // for 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
+        // Landing Stabilization Anchor: dynamically pins the target to desiredTop
+        // for up to 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
         const anchorLand = () => {
           const anchorStartTime = performance.now();
           const anchorWindowMs = 350;
@@ -805,14 +824,20 @@
             const settleDelta = Math.round((freshRect.top - currentScrollerRect.top) - desiredTop);
 
             if (Math.abs(settleDelta) > 2) {
+              const prevScroll = scroller.scrollTop;
               scroller.scrollTop += settleDelta;
-              stableFrames = 0;
+              // If scroll did not move (hit scroll boundary top or bottom), treat as stable
+              if (scroller.scrollTop === prevScroll) {
+                stableFrames++;
+              } else {
+                stableFrames = 0;
+              }
             } else {
               stableFrames++;
             }
 
             const elapsed = performance.now() - anchorStartTime;
-            if (elapsed < anchorWindowMs || stableFrames < 5) {
+            if (elapsed < anchorWindowMs && stableFrames < 5) {
               anchorRafId = requestAnimationFrame(anchorTick);
             } else {
               cleanup(false);
