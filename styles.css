@@ -419,24 +419,39 @@ body[data-theme="dark"],
   color: var(--catalog-text-primary);
   cursor: pointer;
   position: relative;
-  transition: background-color 0.25s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
+  transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
   box-sizing: border-box;
 }
 
-.catalog-list-item:hover,
-.catalog-list-item:focus {
+.catalog-list-item:hover {
   background-color: var(--catalog-item-hover);
+}
+
+.catalog-list-item:focus {
   outline: none;
 }
 
-/* Active / Selected Item */
+.catalog-list-item:focus-visible {
+  outline: 2px solid var(--catalog-primary);
+  outline-offset: -2px;
+}
+
+/* Active State - Minimalist position indicator (badge indicates position) */
 .catalog-list-item.catalog-item-selected {
-  background-color: var(--catalog-item-active-bg) !important;
+  background-color: transparent;
   color: var(--catalog-text-primary);
+  font-weight: 500;
 }
 
 .catalog-list-item.catalog-item-selected:hover {
+  background-color: var(--catalog-item-hover);
+}
+
+/* Temporary highlight during click navigation - MUST override :hover and normal active */
+.catalog-list-item.catalog-item-navigating,
+.catalog-list-item.catalog-item-navigating:hover {
   background-color: var(--catalog-item-active-bg) !important;
+  transition: none !important; /* Instant feedback on click, smooth fade on removal */
 }
 
 /* Leading Slot: Turn Number Badge or Indentation Spacer */
