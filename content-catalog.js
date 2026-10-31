@@ -1145,6 +1145,9 @@
   function createPromptListItem(catalogItem) {
     const listItem = document.createElement('div');
     listItem.className = 'catalog-list-item';
+    if (!catalogItem.isTurnRoot) {
+      listItem.classList.add('catalog-item-sub');
+    }
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
     if (catalogItem.turnCounter !== undefined) {
       listItem.setAttribute('data-turn-counter', catalogItem.turnCounter);

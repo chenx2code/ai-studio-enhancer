@@ -408,9 +408,9 @@ body[data-theme="dark"],
  * Catalog List Item Styles (Material Design 3 tile layout)
  */
 .catalog-list-item {
-  margin: 2px 4px 4px 4px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  margin: 2px 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -421,6 +421,26 @@ body[data-theme="dark"],
   position: relative;
   transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
   box-sizing: border-box;
+}
+
+/* Sub-item (Attachment) Compact Nested Styling */
+.catalog-list-item.catalog-item-sub {
+  margin: 0 6px 2px 6px;
+  padding: 4px 10px;
+  min-height: 26px;
+  border-radius: 6px;
+}
+
+/* Secondary typography for attachments */
+.catalog-list-item.catalog-item-sub .catalog-prompt-text {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--catalog-text-secondary);
+}
+
+/* Next root item following a sub-item gets comfortable separation */
+.catalog-list-item.catalog-item-sub + .catalog-list-item:not(.catalog-item-sub) {
+  margin-top: 6px;
 }
 
 .catalog-list-item:hover {
