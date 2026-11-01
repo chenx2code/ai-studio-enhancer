@@ -408,9 +408,9 @@ body[data-theme="dark"],
  * Catalog List Item Styles (Material Design 3 tile layout)
  */
 .catalog-list-item {
-  margin: 2px 4px 4px 4px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  margin: 2px 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -419,24 +419,66 @@ body[data-theme="dark"],
   color: var(--catalog-text-primary);
   cursor: pointer;
   position: relative;
-  transition: background-color 0.25s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
+  transition: background-color 0.35s cubic-bezier(0.2, 0, 0, 1), color 0.18s ease;
   box-sizing: border-box;
 }
 
-.catalog-list-item:hover,
-.catalog-list-item:focus {
+/* Parent item that has attachments directly following */
+.catalog-list-item.has-sub-items,
+.catalog-list-item:has(+ .catalog-item-sub) {
+  padding-bottom: 2px;
+  margin-bottom: 0;
+}
+
+/* Sub-item (Attachment) Compact Nested Styling */
+.catalog-list-item.catalog-item-sub {
+  margin: 0 6px 2px 6px;
+  padding: 2px 10px 4px 10px;
+  min-height: 24px;
+  border-radius: 6px;
+}
+
+/* Secondary typography for attachments */
+.catalog-list-item.catalog-item-sub .catalog-prompt-text {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--catalog-text-secondary);
+}
+
+/* Next root item following a sub-item gets comfortable separation */
+.catalog-list-item.catalog-item-sub + .catalog-list-item:not(.catalog-item-sub) {
+  margin-top: 6px;
+}
+
+.catalog-list-item:hover {
   background-color: var(--catalog-item-hover);
+}
+
+.catalog-list-item:focus {
   outline: none;
 }
 
-/* Active / Selected Item */
+.catalog-list-item:focus-visible {
+  outline: 2px solid var(--catalog-primary);
+  outline-offset: -2px;
+}
+
+/* Active State - Minimalist position indicator (badge indicates position) */
 .catalog-list-item.catalog-item-selected {
-  background-color: var(--catalog-item-active-bg) !important;
+  background-color: transparent;
   color: var(--catalog-text-primary);
+  font-weight: 500;
 }
 
 .catalog-list-item.catalog-item-selected:hover {
+  background-color: var(--catalog-item-hover);
+}
+
+/* Temporary highlight during click navigation - MUST override :hover and normal active */
+.catalog-list-item.catalog-item-navigating,
+.catalog-list-item.catalog-item-navigating:hover {
   background-color: var(--catalog-item-active-bg) !important;
+  transition: none !important; /* Instant feedback on click, smooth fade on removal */
 }
 
 /* Leading Slot: Turn Number Badge or Indentation Spacer */

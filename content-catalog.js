@@ -390,6 +390,8 @@
   }
 
   let activeNavigationCancel = null;
+  let navigationClearTimer = null;
+  let navigationSafetyTimer = null;
   let isNavigating = false;
 
   // Retrieve the primary scrollable container for AI Studio chat history
@@ -649,23 +651,106 @@
       const scroller = getChatScrollContainer();
       if (!scroller) return;
 
-      // 1. Cancel active animation
+      // 1. Cancel active animation and previous timers
       if (activeNavigationCancel) {
         activeNavigationCancel();
         activeNavigationCancel = null;
       }
+      if (navigationClearTimer) {
+        clearTimeout(navigationClearTimer);
+        navigationClearTimer = null;
+      }
+      if (navigationSafetyTimer) {
+        clearTimeout(navigationSafetyTimer);
+        navigationSafetyTimer = null;
+      }
 
       isNavigating = true;
+      const clickTime = performance.now();
+      const minFeedbackDurationMs = 380; // Ensure visible feedback even for short distances
 
-      // 2. User interrupt handler: abort auto-navigation on manual interaction
+      // Global safety timer: ensure navigation and flight highlight ALWAYS terminates within 1000ms
+      navigationSafetyTimer = setTimeout(() => {
+        if (isNavigating) {
+          cleanup(false);
+        }
+      }, 1000);
+
+      // 2. Update active highlight in the sidebar list immediately
+      const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
+      if (list) {
+        const allItems = list.querySelectorAll('.catalog-list-item');
+        allItems.forEach((el) => {
+          const idx = el.getAttribute('data-turn-index');
+          const counter = el.getAttribute('data-turn-counter');
+          const elSub = el.getAttribute('data-sub-index') || '';
+          const targetSub = catalogItem.subIndex !== undefined && catalogItem.subIndex !== null ? String(catalogItem.subIndex) : '';
+
+          const matchesCounter = (catalogItem.turnCounter !== undefined && counter === String(catalogItem.turnCounter));
+          const matchesIdx = (idx !== null && parseInt(idx, 10) === catalogItem.turnIndex);
+          const matchesTurn = matchesCounter || matchesIdx;
+
+          const isExactTarget = matchesTurn && elSub === targetSub;
+          const isTurnRoot = matchesTurn && (el.getAttribute('data-is-turn-root') === 'true' || elSub === '');
+
+          // Active state: target item and its turn root badge are active
+          if (isExactTarget || isTurnRoot) {
+            el.classList.add('catalog-item-selected');
+          } else {
+            el.classList.remove('catalog-item-selected');
+          }
+
+          // Navigating flight background: ONLY the exact clicked row
+          if (isExactTarget) {
+            el.classList.add('catalog-item-navigating');
+          } else {
+            el.classList.remove('catalog-item-navigating');
+          }
+        });
+      }
+
+      // Helper to fade away temporary navigation row background after minimum feedback time
+      const clearNavigatingState = (immediate = false) => {
+        const doClear = () => {
+          if (list) {
+            const navItems = list.querySelectorAll('.catalog-list-item.catalog-item-navigating');
+            navItems.forEach((el) => el.classList.remove('catalog-item-navigating'));
+          }
+          navigationClearTimer = null;
+        };
+
+        if (navigationClearTimer) {
+          clearTimeout(navigationClearTimer);
+          navigationClearTimer = null;
+        }
+
+        if (immediate) {
+          doClear();
+        } else {
+          const elapsed = performance.now() - clickTime;
+          const remaining = Math.max(0, minFeedbackDurationMs - elapsed);
+          if (remaining > 0) {
+            navigationClearTimer = setTimeout(doClear, remaining);
+          } else {
+            doClear();
+          }
+        }
+      };
+
+      // 3. User interrupt handler: abort auto-navigation on manual interaction
       const onUserInterrupt = (e) => {
         if (e.target && e.target.closest && e.target.closest('#' + Utils.SELECTORS.id.catalogPanel)) {
           return;
         }
-        cleanup();
+        cleanup(true);
       };
 
-      const cleanup = () => {
+      const cleanup = (immediate = false) => {
+        if (navigationSafetyTimer) {
+          clearTimeout(navigationSafetyTimer);
+          navigationSafetyTimer = null;
+        }
+        clearNavigatingState(immediate);
         if (activeNavigationCancel) {
           activeNavigationCancel();
           activeNavigationCancel = null;
@@ -701,21 +786,24 @@
       // Precision landing helper when target DOM element is available
       const landOnTarget = (targetEl) => {
         if (!targetEl) {
-          cleanup();
+          cleanup(false);
           return;
         }
 
         const subTarget = resolveSubTarget(targetEl, catalogItem);
         const targetRect = subTarget.getBoundingClientRect();
         const scrollerRect = scroller.getBoundingClientRect();
-        const desiredTop = 80;
+        const isAttachment = catalogItem.type === 'image' || catalogItem.type === 'file';
+        const desiredTop = isAttachment
+          ? Math.max(80, Math.round((scrollerRect.height - targetRect.height) / 2))
+          : 80;
 
         const delta = (targetRect.top - scrollerRect.top) - desiredTop;
         const targetScrollTop = scroller.scrollTop + delta;
         const totalDistance = Math.abs(delta);
 
-        // Landing Stabilization Anchor: dynamically pins the target to desiredTop (80px)
-        // for 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
+        // Landing Stabilization Anchor: dynamically pins the target to desiredTop
+        // for up to 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
         const anchorLand = () => {
           const anchorStartTime = performance.now();
           const anchorWindowMs = 350;
@@ -727,7 +815,7 @@
 
             const freshCard = findTargetElement(catalogItem) || targetEl;
             if (!freshCard) {
-              cleanup();
+              cleanup(false);
               return;
             }
             const freshTarget = resolveSubTarget(freshCard, catalogItem);
@@ -736,17 +824,23 @@
             const settleDelta = Math.round((freshRect.top - currentScrollerRect.top) - desiredTop);
 
             if (Math.abs(settleDelta) > 2) {
+              const prevScroll = scroller.scrollTop;
               scroller.scrollTop += settleDelta;
-              stableFrames = 0;
+              // If scroll did not move (hit scroll boundary top or bottom), treat as stable
+              if (scroller.scrollTop === prevScroll) {
+                stableFrames++;
+              } else {
+                stableFrames = 0;
+              }
             } else {
               stableFrames++;
             }
 
             const elapsed = performance.now() - anchorStartTime;
-            if (elapsed < anchorWindowMs || stableFrames < 5) {
+            if (elapsed < anchorWindowMs && stableFrames < 5) {
               anchorRafId = requestAnimationFrame(anchorTick);
             } else {
-              cleanup();
+              cleanup(false);
             }
           };
 
@@ -838,7 +932,7 @@
             if (finalFound) {
               landOnTarget(finalFound);
             } else {
-              cleanup();
+              cleanup(false);
             }
           }, 80);
         }
@@ -853,6 +947,9 @@
       };
     } catch (error) {
       console.error('Error during navigation:', error);
+      if (typeof cleanup === 'function') {
+        cleanup(true);
+      }
     }
   }
 
@@ -933,6 +1030,8 @@
       } else {
         item.classList.remove('catalog-item-selected');
       }
+      // Ensure temporary flight highlight is cleared during viewport scroll updates
+      item.classList.remove('catalog-item-navigating');
     });
   }
 
@@ -1068,9 +1167,15 @@
     return panel;
   }
 
-  function createPromptListItem(catalogItem) {
+  function createPromptListItem(catalogItem, hasSubItems) {
     const listItem = document.createElement('div');
     listItem.className = 'catalog-list-item';
+    if (!catalogItem.isTurnRoot) {
+      listItem.classList.add('catalog-item-sub');
+    }
+    if (hasSubItems) {
+      listItem.classList.add('has-sub-items');
+    }
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
     if (catalogItem.turnCounter !== undefined) {
       listItem.setAttribute('data-turn-counter', catalogItem.turnCounter);
@@ -1125,7 +1230,6 @@
     listItem.appendChild(content);
 
     listItem.addEventListener('click', function () {
-      updateActiveTurnHighlight(catalogItem.turnIndex, catalogItem.turnCounter, catalogItem.subIndex);
       navigateToPrompt(catalogItem);
     });
 
@@ -1175,8 +1279,10 @@
       return;
     }
 
-    catalogData.forEach((catalogItem) => {
-      const listItem = createPromptListItem(catalogItem);
+    catalogData.forEach((catalogItem, idx) => {
+      const nextItem = catalogData[idx + 1];
+      const hasSubItems = Boolean(catalogItem.isTurnRoot && nextItem && !nextItem.isTurnRoot);
+      const listItem = createPromptListItem(catalogItem, hasSubItems);
       listContainer.appendChild(listItem);
     });
 
