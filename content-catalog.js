@@ -1170,7 +1170,8 @@
   function createPromptListItem(catalogItem, hasSubItems) {
     const listItem = document.createElement('div');
     listItem.className = 'catalog-list-item';
-    if (!catalogItem.isTurnRoot) {
+    const isAttachment = catalogItem.type !== 'text';
+    if (isAttachment) {
       listItem.classList.add('catalog-item-sub');
     }
     if (hasSubItems) {
