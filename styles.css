@@ -50,7 +50,7 @@
   --catalog-icon-archive-bg: #fef3c7;
   --catalog-icon-archive-color: #92400e;
   --catalog-icon-file-bg: #f1f5f9;
-  --catalog-icon-file-color: #718096;
+  --catalog-icon-file-color: #64748b;
 }
 
 /* Dark Theme Support */
@@ -97,8 +97,8 @@
     --catalog-icon-video-color: #f472b6;
     --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
     --catalog-icon-archive-color: #fbbf24;
-    --catalog-icon-file-bg: rgba(248, 250, 252, 0.36);
-    --catalog-icon-file-color: #ffffff;
+    --catalog-icon-file-bg: rgba(226, 232, 240, 0.16);
+    --catalog-icon-file-color: #e2e8f0;
   }
 }
 
@@ -149,8 +149,8 @@ body[data-theme="dark"],
   --catalog-icon-video-color: #f472b6;
   --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
   --catalog-icon-archive-color: #fbbf24;
-  --catalog-icon-file-bg: rgba(248, 250, 252, 0.36);
-  --catalog-icon-file-color: #ffffff;
+  --catalog-icon-file-bg: rgba(226, 232, 240, 0.16);
+  --catalog-icon-file-color: #e2e8f0;
 }
 
 /* Hide button when its panel is open */
