@@ -278,7 +278,8 @@
         clean === '图片' ||
         clean.startsWith('view image') ||
         clean.startsWith('remove image') ||
-        clean.startsWith('delete image')
+        clean.startsWith('delete image') ||
+        clean === 'thinking'
       );
     };
 
@@ -292,7 +293,7 @@
     ];
 
     const container = img.closest(
-      '.file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
+      '.image-container, ms-image-chunk, ms-prompt-chunk, .file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
     );
     if (container) {
       candidates.push(
@@ -318,8 +319,13 @@
       if (cand && !isPlaceholder(cand)) {
         let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
         if (cleaned && !isPlaceholder(cleaned)) {
-          realName = cleaned;
-          break;
+          const match = cleaned.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+          if (match) {
+            realName = match[1];
+            break;
+          } else if (!realName) {
+            realName = cleaned;
+          }
         }
       }
     }
@@ -371,7 +377,10 @@
     const domImages = [];
     elementList.forEach(({ element, domIndex }) => {
       const images = Array.from(element.querySelectorAll('img')).filter((img) => {
-        if (img.classList.contains('user-icon') || img.classList.contains('avatar') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
+        if (
+          (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) ||
+          (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png')))
+        ) {
           return false;
         }
         return true;
@@ -395,11 +404,9 @@
           apiImages.push({ index, domIndex, subIdx });
         });
       } else if (Array.isArray(inlineContent) && inlineContent.length > 0) {
-        inlineContent.forEach((item, subIdx) => {
-          if (typeof item === 'string' && (item.startsWith('image/') || item.includes('OMITTED'))) {
-            apiImages.push({ index, domIndex, subIdx });
-          }
-        });
+        if (typeof inlineContent[0] === 'string' && (inlineContent[0].startsWith('image/') || inlineContent[0].includes('OMITTED'))) {
+          apiImages.push({ index, domIndex, subIdx: 0 });
+        }
       }
     });
 

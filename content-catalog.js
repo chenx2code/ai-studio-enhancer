@@ -12,6 +12,7 @@
   let currentlyObservedNativePanel = null;
 
   let scrollSpyBound = false;
+  const attachmentCache = new Map();
 
   const detectFileCategory = Utils.detectFileCategory;
 
@@ -61,36 +62,31 @@
     }
 
     // 2. Group consecutive user chunks in conversationTurns into prompt rounds.
-    // In Google AI Studio, each user chunk (file, text) is rendered as a separate ms-chat-turn in the DOM.
-    // Consecutive user chunks before a model turn belong to the same prompt round.
+    // In Google AI Studio, a user prompt turn (containing all text and attachment chunks)
+    // is rendered inside a single user ms-chat-turn. Consecutive user chunks belong to the same prompt round.
     const userPromptRounds = [];
     let currentRound = null;
-    let userChunkCounter = 0;
 
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
       if (role === 'user') {
-        const domIndex = userChunkCounter;
-        userChunkCounter++;
-
         if (!currentRound) {
+          const roundIdx = userPromptRounds.length;
           currentRound = {
+            roundIndex: roundIdx,
             primaryTurnIndex: index,
-            startDomIndex: domIndex,
             chunks: []
           };
           userPromptRounds.push(currentRound);
         }
-        currentRound.chunks.push({ turn, index, domIndex });
-        currentRound.endDomIndex = domIndex;
+        currentRound.chunks.push({ turn, index, domIndex: currentRound.roundIndex });
       } else {
         // Model turn ends the current user prompt round
         currentRound = null;
       }
     });
 
-    const totalUserChunks = userChunkCounter;
     const totalRounds = userPromptRounds.length;
     const userPrompts = [];
     let turnCounter = 0;
@@ -104,14 +100,21 @@
       turnCounter++;
       const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
 
-      // Match with user turn DOM elements belonging to this round
+      // Match with user turn DOM element corresponding to this round
       const roundElements = [];
-      for (let d = round.startDomIndex; d <= round.endDomIndex; d++) {
-        if (userTurnElements[d]) {
-          roundElements.push({ element: userTurnElements[d], domIndex: d });
-        }
+      let turnElement = null;
+
+      if (userTurnElements.length === totalRounds && userTurnElements[roundIdx]) {
+        turnElement = userTurnElements[roundIdx];
+      } else if (userTurnElements.length === 1 && totalRounds === 1) {
+        turnElement = userTurnElements[0];
+      } else if (userTurnElements[roundIdx]) {
+        turnElement = userTurnElements[roundIdx];
       }
-      const turnElement = userTurnElements[round.startDomIndex] || null;
+
+      if (turnElement) {
+        roundElements.push({ element: turnElement, domIndex: roundIdx });
+      }
       const turnElementId = turnElement ? turnElement.id : null;
 
       // Extract combined text from all user chunks in this round
@@ -128,20 +131,38 @@
       // Extract attachments from DOM elements and API chunks in this round
       const attachments = extractRoundAttachments(round.chunks, roundElements, fullText);
 
+      // Synchronize with attachmentCache: restore known real names or save newly resolved ones
+      attachments.forEach((att, attIdx) => {
+        const subIndex = att.subIndex !== undefined ? att.subIndex : attIdx;
+        const cacheKey = `${roundIdx}_${subIndex}`;
+        if (!att.isDefaultName && att.fileName) {
+          attachmentCache.set(cacheKey, {
+            fileName: att.fileName,
+            fileType: att.fileType,
+            fileCategory: att.fileCategory
+          });
+        } else if (att.isDefaultName && attachmentCache.has(cacheKey)) {
+          const cached = attachmentCache.get(cacheKey);
+          att.fileName = cached.fileName;
+          att.fileType = cached.fileType;
+          if (cached.fileCategory) att.fileCategory = cached.fileCategory;
+          att.isDefaultName = false;
+        }
+      });
+
       if (fullText) {
         // A. Round has text: text row is turn root (gets the sequence badge)
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
-          totalUserChunks: totalUserChunks,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
-          startDomIndex: round.startDomIndex,
-          endDomIndex: round.endDomIndex,
-          targetDomIndex: round.startDomIndex,
+          startDomIndex: roundIdx,
+          endDomIndex: roundIdx,
+          targetDomIndex: roundIdx,
           turnElementId: turnElementId,
           promptText: fullText,
           pureText: fullText,
@@ -152,15 +173,9 @@
 
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
         attachments.forEach((att, attIdx) => {
-          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
-          const attDomIndex = att.domIndex !== undefined
-            ? att.domIndex
-            : (attChunk ? attChunk.domIndex : round.startDomIndex);
-
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
-            totalUserChunks: totalUserChunks,
             turnCounter: turnCounter,
             turnBadge: '',
             isTurnRoot: false,
@@ -168,11 +183,12 @@
             fileCategory: att.fileCategory,
             fileType: att.fileType,
             fileName: att.fileName,
+            isDefaultName: Boolean(att.isDefaultName),
             pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
-            startDomIndex: round.startDomIndex,
-            endDomIndex: round.endDomIndex,
-            targetDomIndex: attDomIndex,
+            startDomIndex: roundIdx,
+            endDomIndex: roundIdx,
+            targetDomIndex: roundIdx,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -184,15 +200,9 @@
         // B. Round has NO text, only attachments: first attachment is turn root
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
-          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
-          const attDomIndex = att.domIndex !== undefined
-            ? att.domIndex
-            : (attChunk ? attChunk.domIndex : round.startDomIndex);
-
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
-            totalUserChunks: totalUserChunks,
             turnCounter: turnCounter,
             turnBadge: isRoot ? badgeStr : '',
             isTurnRoot: isRoot,
@@ -200,11 +210,12 @@
             fileCategory: att.fileCategory,
             fileType: att.fileType,
             fileName: att.fileName,
+            isDefaultName: Boolean(att.isDefaultName),
             pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
-            startDomIndex: round.startDomIndex,
-            endDomIndex: round.endDomIndex,
-            targetDomIndex: attDomIndex,
+            startDomIndex: roundIdx,
+            endDomIndex: roundIdx,
+            targetDomIndex: roundIdx,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -217,15 +228,14 @@
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
-          totalUserChunks: totalUserChunks,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
-          startDomIndex: round.startDomIndex,
-          endDomIndex: round.endDomIndex,
-          targetDomIndex: round.startDomIndex,
+          startDomIndex: roundIdx,
+          endDomIndex: roundIdx,
+          targetDomIndex: roundIdx,
           turnElementId: turnElementId,
           promptText: '[Prompt]',
           pureText: '',
@@ -239,11 +249,187 @@
     return userPrompts;
   }
 
+  function clearAttachmentCache() {
+    attachmentCache.clear();
+  }
+
+  function enrichCatalogAttachmentNames() {
+    const catalogData = State.getCatalogData();
+    if (!catalogData || catalogData.length === 0) return false;
+
+    const userTurnElements = [];
+    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
+    for (const chatTurn of chatTurns) {
+      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
+        userTurnElements.push(chatTurn);
+      }
+    }
+
+    const liveImages = Array.from(
+      document.querySelectorAll(
+        '.image-container img, ms-image-chunk img, ms-prompt-chunk img, .chat-turn-container.user img'
+      )
+    ).filter(img => {
+      if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
+      if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
+      if (img.alt && img.alt.toLowerCase() === 'thinking') return false;
+      return true;
+    });
+
+    let updated = false;
+
+    const imageItems = catalogData.filter(item => !item.isTurnRoot && item.type === 'image');
+    const imageRoundIndices = new Set(imageItems.map(item => item.roundIndex));
+    const singleImageRound = imageRoundIndices.size === 1;
+
+    catalogData.forEach(item => {
+      if (!item.isTurnRoot && item.type === 'image') {
+        const roundIdx = item.roundIndex;
+        const subIdx = item.subIndex !== undefined ? item.subIndex : 0;
+        const cacheKey = `${roundIdx}_${subIdx}`;
+
+        if (item.isDefaultName) {
+          // 1. Check cache first
+          if (attachmentCache.has(cacheKey)) {
+            const cached = attachmentCache.get(cacheKey);
+            item.fileName = cached.fileName;
+            item.fileType = cached.fileType;
+            if (cached.fileCategory) item.fileCategory = cached.fileCategory;
+            item.promptText = `[${cached.fileType}] ${cached.fileName}`;
+            item.displayText = cached.fileName;
+            item.isDefaultName = false;
+            updated = true;
+            return;
+          }
+
+          // 2. Scan live DOM
+          let targetImg = null;
+
+          // Strategy A: Find user turn matching this round
+          let targetTurnEl = null;
+          if (userTurnElements.length > 0) {
+            if (userTurnElements[roundIdx]) {
+              const cleanText = getCleanPromptText(userTurnElements[roundIdx]);
+              if (!item.pureText || cleanText.includes(item.pureText) || item.pureText.includes(cleanText)) {
+                targetTurnEl = userTurnElements[roundIdx];
+              }
+            }
+            if (!targetTurnEl && item.pureText) {
+              targetTurnEl = userTurnElements.find(el => {
+                const clean = getCleanPromptText(el);
+                return clean && (clean.includes(item.pureText) || item.pureText.includes(clean));
+              });
+            }
+          }
+
+          if (targetTurnEl) {
+            const imgs = Array.from(targetTurnEl.querySelectorAll('img')).filter(img =>
+              (!img.classList || (!img.classList.contains('user-icon') && !img.classList.contains('avatar'))) &&
+              (!img.src || (!img.src.includes('googleusercontent.com/a/') && !img.src.includes('watermark.png'))) &&
+              (!img.alt || img.alt.toLowerCase() !== 'thinking')
+            );
+            targetImg = imgs[subIdx] || imgs[0];
+          }
+
+          // Strategy B: Fallback to liveImages if only one round with images exists or turn-level match was bypassed
+          if (!targetImg && liveImages.length > 0) {
+            if (singleImageRound) {
+              targetImg = liveImages[subIdx] || liveImages[0];
+            } else if (item.pureText) {
+              for (const img of liveImages) {
+                const parentTurn = img.closest(Utils.SELECTORS.query.chatTurn) || img.closest('.chat-turn-container.user');
+                if (parentTurn) {
+                  const turnText = getCleanPromptText(parentTurn);
+                  if (turnText && (turnText.includes(item.pureText) || item.pureText.includes(turnText))) {
+                    targetImg = img;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          if (targetImg) {
+            const info = Utils.extractImageInfo(targetImg, subIdx, liveImages.length || 1);
+            if (!info.isDefaultName && info.fileName) {
+              item.fileName = info.fileName;
+              item.fileType = info.fileType;
+              item.fileCategory = info.fileCategory || 'image';
+              item.promptText = `[${info.fileType}] ${info.fileName}`;
+              item.displayText = info.fileName;
+              item.isDefaultName = false;
+              attachmentCache.set(cacheKey, {
+                fileName: info.fileName,
+                fileType: info.fileType,
+                fileCategory: item.fileCategory
+              });
+              updated = true;
+            }
+          }
+        } else if (item.fileName && !item.isDefaultName) {
+          attachmentCache.set(cacheKey, {
+            fileName: item.fileName,
+            fileType: item.fileType,
+            fileCategory: item.fileCategory
+          });
+        }
+      }
+    });
+
+    if (updated) {
+      State.setCatalogData(catalogData);
+      if (catalogVisible) {
+        renderPromptList();
+      }
+    }
+    return updated;
+  }
+
   function updateCatalogData(conversationTurns) {
     try {
       const newData = extractUserPrompts(conversationTurns);
       const oldData = State.getCatalogData();
       
+      // Smart Merge: prevent fallback placeholder names from overwriting previously resolved filenames
+      if (oldData && oldData.length > 0) {
+        newData.forEach((newItem) => {
+          if (!newItem.isTurnRoot && newItem.isDefaultName) {
+            const cacheKey = `${newItem.roundIndex}_${newItem.subIndex !== undefined ? newItem.subIndex : 0}`;
+            if (attachmentCache.has(cacheKey)) {
+              const cached = attachmentCache.get(cacheKey);
+              newItem.fileName = cached.fileName;
+              newItem.fileType = cached.fileType;
+              if (cached.fileCategory) newItem.fileCategory = cached.fileCategory;
+              newItem.promptText = `[${cached.fileType}] ${cached.fileName}`;
+              newItem.displayText = cached.fileName;
+              newItem.isDefaultName = false;
+            } else {
+              const matchOld = oldData.find(o => 
+                !o.isTurnRoot && 
+                o.roundIndex === newItem.roundIndex && 
+                o.subIndex === newItem.subIndex && 
+                !o.isDefaultName && 
+                o.fileName
+              );
+              if (matchOld) {
+                newItem.fileName = matchOld.fileName;
+                newItem.fileType = matchOld.fileType;
+                if (matchOld.fileCategory) newItem.fileCategory = matchOld.fileCategory;
+                newItem.promptText = `[${matchOld.fileType}] ${matchOld.fileName}`;
+                newItem.displayText = matchOld.fileName;
+                newItem.isDefaultName = false;
+                attachmentCache.set(cacheKey, {
+                  fileName: matchOld.fileName,
+                  fileType: matchOld.fileType,
+                  fileCategory: matchOld.fileCategory
+                });
+              }
+            }
+          }
+        });
+      }
+
       let isDifferent = false;
       if (!oldData || newData.length !== oldData.length) {
         isDifferent = true;
@@ -252,7 +438,8 @@
           if (newData[i].promptText !== oldData[i].promptText || 
               newData[i].turnElementId !== oldData[i].turnElementId ||
               newData[i].turnBadge !== oldData[i].turnBadge ||
-              newData[i].fileName !== oldData[i].fileName) {
+              newData[i].fileName !== oldData[i].fileName ||
+              newData[i].isDefaultName !== oldData[i].isDefaultName) {
             isDifferent = true;
             break;
           }
@@ -265,6 +452,10 @@
           renderPromptList();
         }
       }
+
+      // Schedule asynchronous DOM-ready enrichment
+      setTimeout(enrichCatalogAttachmentNames, 250);
+      setTimeout(enrichCatalogAttachmentNames, 800);
     } catch (error) {
       console.error('Error updating catalog data:', error);
       State.setCatalogData([]);
@@ -299,32 +490,55 @@
     if (!conversationContainer) return;
 
     let validationTimer = null;
+    let enrichmentTimer = null;
     const observer = new MutationObserver((mutations) => {
       let shouldValidate = false;
+      let shouldEnrich = false;
       for (let m = 0; m < mutations.length; m++) {
         const mutation = mutations[m];
         if (mutation.type === 'childList') {
-          for (let i = 0; i < mutation.removedNodes.length; i++) {
-            const node = mutation.removedNodes[i];
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const tag = node.tagName.toLowerCase();
-              if (tag === 'ms-chat-turn' || tag === Utils.SELECTORS.tag.chatTurn) {
-                shouldValidate = true;
-                break;
-              } else if (tag === 'div' || tag === 'main' || tag === 'section') {
-                if (node.querySelector && node.querySelector(Utils.SELECTORS.query.chatTurn)) {
+          if (mutation.removedNodes && mutation.removedNodes.length > 0) {
+            for (let i = 0; i < mutation.removedNodes.length; i++) {
+              const node = mutation.removedNodes[i];
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const tag = node.tagName.toLowerCase();
+                if (tag === 'ms-chat-turn' || tag === Utils.SELECTORS.tag.chatTurn) {
                   shouldValidate = true;
+                  break;
+                } else if (tag === 'div' || tag === 'main' || tag === 'section') {
+                  if (node.querySelector && node.querySelector(Utils.SELECTORS.query.chatTurn)) {
+                    shouldValidate = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+            for (let i = 0; i < mutation.addedNodes.length; i++) {
+              const node = mutation.addedNodes[i];
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const tag = node.tagName.toLowerCase();
+                if (tag === 'img' || tag === 'ms-image-chunk' || tag === 'ms-chat-turn' || tag === 'ms-prompt-chunk') {
+                  shouldEnrich = true;
+                  break;
+                } else if (node.querySelector && node.querySelector('img, ms-image-chunk')) {
+                  shouldEnrich = true;
                   break;
                 }
               }
             }
           }
         }
-        if (shouldValidate) break;
+        if (shouldValidate && shouldEnrich) break;
       }
       if (shouldValidate) {
         clearTimeout(validationTimer);
         validationTimer = setTimeout(validateCatalogData, 100);
+      }
+      if (shouldEnrich) {
+        clearTimeout(enrichmentTimer);
+        enrichmentTimer = setTimeout(enrichCatalogAttachmentNames, 150);
       }
     });
 
@@ -1122,6 +1336,7 @@
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => {
         updateActiveTurnByViewport();
+        enrichCatalogAttachmentNames();
       }, 100);
     }, { passive: true });
   }
@@ -1303,6 +1518,7 @@
 
     if (shouldShow) {
       setupScrollSpy();
+      enrichCatalogAttachmentNames();
       renderPromptList();
     }
 
@@ -1333,6 +1549,8 @@
 
   global.__AIStudioEnhancer__.Catalog = {
     updateCatalogData,
+    enrichCatalogAttachmentNames,
+    clearAttachmentCache,
     setupConversationObserver,
     setupWindowListeners,
     checkAndObserveNativePanel,

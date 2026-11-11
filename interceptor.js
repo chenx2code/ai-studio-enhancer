@@ -65,7 +65,10 @@
                 }
                 // turn[12] is inlineContent
                 if (turn[12] && Array.isArray(turn[12])) {
-                  turn[12] = turn[12].map(item => (typeof item === 'string' && item.startsWith('image/')) ? item : 'image/[OMITTED]');
+                  const isImageBlob = typeof turn[12][0] === 'string' && turn[12][0].startsWith('image/');
+                  if (isImageBlob) {
+                    turn[12] = [turn[12][0], '[OMITTED_IMAGE_DATA]'];
+                  }
                 }
                 // turn[23] is docContent
                 if (turn[23] && Array.isArray(turn[23])) {
