@@ -164,9 +164,15 @@
     });
   }
 
+  function getTurnContentFiles(turnEl) {
+    if (!turnEl || typeof Utils.getTurnFileElements !== 'function') return [];
+    return Utils.getTurnFileElements(turnEl);
+  }
+
   function turnHasAttachment(turnEl) {
     if (!turnEl) return false;
     if (getTurnContentImages(turnEl).length > 0) return true;
+    if (getTurnContentFiles(turnEl).length > 0) return true;
     return Boolean(
       turnEl.querySelector(
         'ms-file-chunk, ms-media-chunk, ms-image-chunk, ms-youtube-chunk, ms-video-chunk, ms-audio-chunk, ms-drive-file, [class*="file"], [class*="attachment"], [data-test-id*="file"]'
@@ -188,9 +194,72 @@
     return false;
   }
 
+  function doesFileElementMatchName(fileEl, targetName) {
+    if (!fileEl || !targetName) return false;
+    const normTarget = normalizeTextForMatch(targetName);
+    if (!normTarget) return false;
+
+    const candidates = [];
+    if (typeof Utils.extractFileInfo === 'function') {
+      const info = Utils.extractFileInfo(fileEl, 0, 1);
+      if (info && !info.isDefaultName && info.fileName) {
+        candidates.push(info.fileName);
+      }
+    }
+    const nameEl = fileEl.querySelector('.name, [class*="file-name"], [class*="filename"]');
+    if (nameEl) {
+      candidates.push(
+        nameEl.getAttribute('title'),
+        nameEl.title,
+        nameEl.getAttribute('data-filename'),
+        nameEl.getAttribute('data-name'),
+        nameEl.textContent
+      );
+    }
+    candidates.push(
+      fileEl.getAttribute('title'),
+      fileEl.title,
+      fileEl.getAttribute('data-filename'),
+      fileEl.getAttribute('data-name'),
+      fileEl.textContent
+    );
+
+    for (const raw of candidates) {
+      if (!raw || typeof raw !== 'string') continue;
+      const cleanRaw = raw.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/gi, '').trim();
+      if (!cleanRaw) continue;
+      const normCand = normalizeTextForMatch(cleanRaw);
+      if (!normCand) continue;
+      if (normCand === normTarget || normCand.includes(normTarget) || normTarget.includes(normCand)) {
+        return true;
+      }
+      // Handle visually truncated DOM display names (e.g. "transformer_wmt_benchmark.c...")
+      if (/(\.\.\.|\u2026)$/.test(cleanRaw)) {
+        const prefix = normalizeTextForMatch(cleanRaw.replace(/(\.\.\.|\u2026)+$/, ''));
+        if (prefix && prefix.length >= 6 && normTarget.startsWith(prefix)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Check whether a turn element contains a file chunk/card matching a real (non-placeholder) filename
+  function matchFileInTurn(turnEl, targetName) {
+    if (!turnEl || !targetName) return false;
+    const files = getTurnContentFiles(turnEl);
+    for (const fel of files) {
+      if (doesFileElementMatchName(fel, targetName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function matchAttachmentInTurn(turnEl, fileName) {
     if (!turnEl || !fileName) return false;
     if (matchImageInTurn(turnEl, fileName)) return true;
+    if (matchFileInTurn(turnEl, fileName)) return true;
     // File chips/cards in DOM always mark the turn as containing an attachment
     if (!turnHasAttachment(turnEl)) return false;
     const normTarget = normalizeTextForMatch(fileName);
@@ -329,6 +398,17 @@
     }
 
     return { mode: null, totalDomTurns: totalUserChunks };
+  }
+
+  function getAttachmentCacheKey(roundIdx, itemOrType, subIdxOpt) {
+    if (itemOrType && typeof itemOrType === 'object') {
+      const type = itemOrType.type || 'file';
+      const subIdx = itemOrType.subIndex !== undefined ? itemOrType.subIndex : 0;
+      return `${roundIdx}_${type}_${subIdx}`;
+    }
+    const type = itemOrType || 'file';
+    const subIdx = subIdxOpt !== undefined ? subIdxOpt : 0;
+    return `${roundIdx}_${type}_${subIdx}`;
   }
 
   function extractUserPrompts(conversationTurns) {
@@ -473,24 +553,58 @@
 
       // Synchronize with attachmentCache: restore known real names or save newly resolved ones
       let imageIdxInRound = 0;
+      let fileIdxInRound = 0;
       attachments.forEach((att, attIdx) => {
-        if (att.subIndex === undefined && att.type === 'image') {
-          att.subIndex = imageIdxInRound++;
+        if (att.subIndex === undefined) {
+          if (att.type === 'image') {
+            att.subIndex = imageIdxInRound++;
+          } else if (att.type === 'file') {
+            att.subIndex = fileIdxInRound++;
+          } else {
+            att.subIndex = attIdx;
+          }
         }
-        const subIndex = att.subIndex !== undefined ? att.subIndex : attIdx;
-        const cacheKey = `${roundIdx}_${subIndex}`;
+        const cacheKey = getAttachmentCacheKey(roundIdx, att);
+        const existingCache = attachmentCache.get(cacheKey);
+        const needsCacheRestore = Boolean(
+          att.isDefaultName ||
+          (att.type === 'file' && att.isTruncatedName)
+        );
+
         if (!att.isDefaultName && att.fileName) {
-          attachmentCache.set(cacheKey, {
-            fileName: att.fileName,
-            fileType: att.fileType,
-            fileCategory: att.fileCategory
-          });
-        } else if (att.isDefaultName && attachmentCache.has(cacheKey)) {
-          const cached = attachmentCache.get(cacheKey);
-          att.fileName = cached.fileName;
-          att.fileType = cached.fileType;
-          if (cached.fileCategory) att.fileCategory = cached.fileCategory;
-          att.isDefaultName = false;
+          const shouldSaveToCache =
+            !existingCache ||
+            (existingCache.isTruncatedName && !att.isTruncatedName) ||
+            (existingCache.fileType === 'FILE' && att.fileType !== 'FILE') ||
+            !att.isTruncatedName;
+          if (shouldSaveToCache) {
+            attachmentCache.set(cacheKey, {
+              fileName: att.fileName,
+              fileType: att.fileType,
+              fileCategory: att.fileCategory,
+              isTruncatedName: Boolean(att.isTruncatedName)
+            });
+          }
+        }
+
+        if (needsCacheRestore && existingCache && existingCache.fileName) {
+          const cacheIsBetter =
+            att.isDefaultName ||
+            (!existingCache.isTruncatedName && att.isTruncatedName) ||
+            (existingCache.fileType !== 'FILE' && att.fileType === 'FILE');
+          if (cacheIsBetter) {
+            const preservedType = (!existingCache.fileType || existingCache.fileType === 'FILE') && att.fileType && att.fileType !== 'FILE'
+              ? att.fileType
+              : existingCache.fileType;
+            const preservedCat = (!existingCache.fileType || existingCache.fileType === 'FILE') && att.fileType && att.fileType !== 'FILE'
+              ? att.fileCategory
+              : (existingCache.fileCategory || att.fileCategory);
+            att.fileName = existingCache.fileName;
+            att.fileType = preservedType;
+            att.fileCategory = preservedCat;
+            att.isDefaultName = false;
+            att.isTruncatedName = Boolean(existingCache.isTruncatedName);
+          }
         }
       });
 
@@ -526,8 +640,11 @@
 
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
         let imgCounter = 0;
+        let fileCounter = 0;
         attachments.forEach((att, attIdx) => {
-          const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
+          const subIndex = att.subIndex !== undefined
+            ? att.subIndex
+            : (att.type === 'image' ? imgCounter++ : (att.type === 'file' ? fileCounter++ : attIdx));
           const attChunk = round.chunks.find(c => c.index === att.turnIndex);
           const chunkAttDomIndex = attChunk
             ? attChunk.domIndex
@@ -547,6 +664,7 @@
             fileType: att.fileType,
             fileName: att.fileName,
             isDefaultName: Boolean(att.isDefaultName),
+            isTruncatedName: Boolean(att.isTruncatedName),
             pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             startDomIndex: resolvedStartDomIndex,
@@ -566,9 +684,12 @@
       } else if (attachments.length > 0) {
         // B. Round has NO text, only attachments: first attachment is turn root
         let imgCounter = 0;
+        let fileCounter = 0;
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
-          const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
+          const subIndex = att.subIndex !== undefined
+            ? att.subIndex
+            : (att.type === 'image' ? imgCounter++ : (att.type === 'file' ? fileCounter++ : attIdx));
           const attChunk = round.chunks.find(c => c.index === att.turnIndex);
           const chunkAttDomIndex = attChunk
             ? attChunk.domIndex
@@ -588,6 +709,7 @@
             fileType: att.fileType,
             fileName: att.fileName,
             isDefaultName: Boolean(att.isDefaultName),
+            isTruncatedName: Boolean(att.isTruncatedName),
             pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             startDomIndex: resolvedStartDomIndex,
@@ -672,135 +794,192 @@
       return true;
     });
 
+    const liveFiles = [];
+    document.querySelectorAll('.chat-turn-container.user').forEach((userCont) => {
+      liveFiles.push(...getTurnContentFiles(userCont));
+    });
+
     let updated = false;
 
     const imageItems = catalogData.filter(item => item.type === 'image');
     const imageRoundIndices = new Set(imageItems.map(item => item.roundIndex));
     const singleImageRound = imageRoundIndices.size === 1;
 
-    catalogData.forEach(item => {
-      if (item.type === 'image') {
-        const roundIdx = item.roundIndex;
-        const subIdx = item.subIndex !== undefined ? item.subIndex : 0;
-        const cacheKey = `${roundIdx}_${subIdx}`;
+    const fileItems = catalogData.filter(item => item.type === 'file');
+    const fileRoundIndices = new Set(fileItems.map(item => item.roundIndex));
+    const singleFileRound = fileRoundIndices.size === 1;
 
-        if (item.isDefaultName) {
-          // 1. Check cache first
-          if (attachmentCache.has(cacheKey)) {
-            const cached = attachmentCache.get(cacheKey);
+    const needsAttachmentEnrichment = (item) => Boolean(
+      item.isDefaultName ||
+      (item.type === 'file' && item.isTruncatedName)
+    );
+
+    catalogData.forEach(item => {
+      if (item.type !== 'image' && item.type !== 'file') return;
+
+      const isImage = item.type === 'image';
+      const roundIdx = item.roundIndex;
+      const subIdx = item.subIndex !== undefined ? item.subIndex : 0;
+      const cacheKey = getAttachmentCacheKey(roundIdx, item);
+      const getElsForTurn = isImage ? getTurnContentImages : getTurnContentFiles;
+      const typeItems = isImage ? imageItems : fileItems;
+      const livePool = isImage ? liveImages : liveFiles;
+      const isSingleRoundForType = isImage ? singleImageRound : singleFileRound;
+
+      if (needsAttachmentEnrichment(item)) {
+        // 1. Check cache first
+        if (attachmentCache.has(cacheKey)) {
+          const cached = attachmentCache.get(cacheKey);
+          const cacheIsBetter =
+            item.isDefaultName ||
+            (!cached.isTruncatedName && item.isTruncatedName) ||
+            (cached.fileType !== 'FILE' && item.fileType === 'FILE');
+          if (cacheIsBetter && cached.fileName) {
+            const preservedType = (!cached.fileType || cached.fileType === 'FILE') && item.fileType && item.fileType !== 'FILE'
+              ? item.fileType
+              : cached.fileType;
+            const preservedCat = (!cached.fileType || cached.fileType === 'FILE') && item.fileType && item.fileType !== 'FILE'
+              ? item.fileCategory
+              : (cached.fileCategory || item.fileCategory);
             item.fileName = cached.fileName;
-            item.fileType = cached.fileType;
-            if (cached.fileCategory) item.fileCategory = cached.fileCategory;
-            item.promptText = `[${cached.fileType}] ${cached.fileName}`;
+            item.fileType = preservedType;
+            if (preservedCat) item.fileCategory = preservedCat;
+            item.promptText = `[${preservedType}] ${cached.fileName}`;
             item.displayText = cached.fileName;
             item.isDefaultName = false;
+            item.isTruncatedName = Boolean(cached.isTruncatedName);
             updated = true;
-            return;
+            if (!needsAttachmentEnrichment(item)) return;
           }
+        }
 
-          // 2. Scan live DOM
-          let targetImg = null;
-          let roundContainerResolved = false;
-          const roundTurnEls = [];
-          const roundImageItems = imageItems.filter(x => x.roundIndex === roundIdx);
-          const roundTotalImages = roundImageItems.length || 1;
+        // 2. Scan live DOM
+        let targetEl = null;
+        let roundContainerResolved = false;
+        const roundTurnEls = [];
+        const roundTypeItems = typeItems.filter(x => x.roundIndex === roundIdx);
+        const roundTotalCount = roundTypeItems.length || 1;
 
-          // Strategy A: Gather rendered turn element(s) belonging to this round
-          if (isFullDomPresent) {
-            if (effectiveMode === 'round') {
-              if (userTurnElements[roundIdx]) {
-                roundTurnEls.push(userTurnElements[roundIdx]);
-                roundContainerResolved = true;
-              }
-            } else if (item.chunkTargetDomIndex !== undefined && userTurnElements[item.chunkTargetDomIndex]) {
-              const targetChunkEl = userTurnElements[item.chunkTargetDomIndex];
+        // Strategy A: Gather rendered turn element(s) belonging to this round
+        if (isFullDomPresent) {
+          if (effectiveMode === 'round') {
+            if (userTurnElements[roundIdx]) {
+              roundTurnEls.push(userTurnElements[roundIdx]);
               roundContainerResolved = true;
-              const sameChunkImageItems = roundImageItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
-              const localIdx = Math.max(0, sameChunkImageItems.indexOf(item));
-              targetImg = getTurnContentImages(targetChunkEl)[localIdx] || null;
-            } else {
-              const startD = item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : roundIdx;
-              const endD = item.chunkEndDomIndex !== undefined ? item.chunkEndDomIndex : startD;
-              for (let d = startD; d <= endD; d++) {
-                if (userTurnElements[d]) roundTurnEls.push(userTurnElements[d]);
-              }
-              if (roundTurnEls.length > 0) roundContainerResolved = true;
             }
-          } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
-            const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
-            if (sameTextRoundsCount === 1) {
-              const matchedTextIdx = userTurnElements.findIndex(el => textsLooselyMatch(getCleanPromptText(el), item.pureText));
-              if (matchedTextIdx !== -1) {
-                roundContainerResolved = true;
-                if (effectiveMode === 'round') {
-                  roundTurnEls.push(userTurnElements[matchedTextIdx]);
-                } else if (item.chunkTargetDomIndex !== undefined && item.chunkTextDomIndex !== undefined) {
-                  const targetPos = matchedTextIdx + (item.chunkTargetDomIndex - item.chunkTextDomIndex);
-                  if (targetPos >= 0 && targetPos < userTurnElements.length) {
-                    const targetChunkEl = userTurnElements[targetPos];
-                    const sameChunkImageItems = roundImageItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
-                    const localIdx = Math.max(0, sameChunkImageItems.indexOf(item));
-                    targetImg = getTurnContentImages(targetChunkEl)[localIdx] || null;
-                  }
-                } else {
-                  const startOffset = (item.chunkTextDomIndex || 0) - (item.chunkStartDomIndex || 0);
-                  const endOffset = (item.chunkEndDomIndex || 0) - (item.chunkStartDomIndex || 0);
-                  const baseIdx = matchedTextIdx - Math.max(0, startOffset);
-                  for (let k = Math.max(0, baseIdx); k <= baseIdx + Math.max(0, endOffset); k++) {
-                    if (userTurnElements[k]) roundTurnEls.push(userTurnElements[k]);
-                  }
+          } else if (item.chunkTargetDomIndex !== undefined && userTurnElements[item.chunkTargetDomIndex]) {
+            const targetChunkEl = userTurnElements[item.chunkTargetDomIndex];
+            roundContainerResolved = true;
+            const sameChunkItems = roundTypeItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
+            const localIdx = Math.max(0, sameChunkItems.indexOf(item));
+            targetEl = getElsForTurn(targetChunkEl)[localIdx] || null;
+          } else {
+            const startD = item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : roundIdx;
+            const endD = item.chunkEndDomIndex !== undefined ? item.chunkEndDomIndex : startD;
+            for (let d = startD; d <= endD; d++) {
+              if (userTurnElements[d]) roundTurnEls.push(userTurnElements[d]);
+            }
+            if (roundTurnEls.length > 0) roundContainerResolved = true;
+          }
+        } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
+          const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
+          if (sameTextRoundsCount === 1) {
+            const matchedTextIdx = userTurnElements.findIndex(el => textsLooselyMatch(getCleanPromptText(el), item.pureText));
+            if (matchedTextIdx !== -1) {
+              roundContainerResolved = true;
+              if (effectiveMode === 'round') {
+                roundTurnEls.push(userTurnElements[matchedTextIdx]);
+              } else if (item.chunkTargetDomIndex !== undefined && item.chunkTextDomIndex !== undefined) {
+                const targetPos = matchedTextIdx + (item.chunkTargetDomIndex - item.chunkTextDomIndex);
+                if (targetPos >= 0 && targetPos < userTurnElements.length) {
+                  const targetChunkEl = userTurnElements[targetPos];
+                  const sameChunkItems = roundTypeItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
+                  const localIdx = Math.max(0, sameChunkItems.indexOf(item));
+                  targetEl = getElsForTurn(targetChunkEl)[localIdx] || null;
+                }
+              } else {
+                const startOffset = (item.chunkTextDomIndex || 0) - (item.chunkStartDomIndex || 0);
+                const endOffset = (item.chunkEndDomIndex || 0) - (item.chunkStartDomIndex || 0);
+                const baseIdx = matchedTextIdx - Math.max(0, startOffset);
+                for (let k = Math.max(0, baseIdx); k <= baseIdx + Math.max(0, endOffset); k++) {
+                  if (userTurnElements[k]) roundTurnEls.push(userTurnElements[k]);
                 }
               }
             }
           }
+        }
 
-          if (!targetImg && roundTurnEls.length > 0) {
-            const roundImgs = [];
-            roundTurnEls.forEach((turnEl) => {
-              roundImgs.push(...getTurnContentImages(turnEl));
-            });
-            targetImg = roundImgs[subIdx] || null;
-          }
+        if (!targetEl && roundTurnEls.length > 0) {
+          const roundEls = [];
+          roundTurnEls.forEach((turnEl) => {
+            roundEls.push(...getElsForTurn(turnEl));
+          });
+          targetEl = roundEls[subIdx] || null;
+        }
 
-          // Strategy B: Fallback to user-turn liveImages only if the round's DOM container wasn't already localized
-          if (!targetImg && !roundContainerResolved && liveImages.length > 0) {
-            if (singleImageRound && (roundTotalImages === 1 || liveImages.length === roundTotalImages)) {
-              targetImg = liveImages[subIdx] || null;
-            } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
-              const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
-              if (sameTextRoundsCount === 1) {
-                const matchedImages = liveImages.filter(img => {
-                  const parentTurn = img.closest(Utils.SELECTORS.query.chatTurn) || img.closest('.chat-turn-container.user');
-                  if (!parentTurn) return false;
-                  return textsLooselyMatch(getCleanPromptText(parentTurn), item.pureText);
-                });
-                targetImg = matchedImages[subIdx] || null;
-              }
-            }
-          }
-
-          if (targetImg) {
-            const info = Utils.extractImageInfo(targetImg, subIdx, roundTotalImages);
-            if (!info.isDefaultName && info.fileName) {
-              item.fileName = info.fileName;
-              item.fileType = info.fileType;
-              item.fileCategory = info.fileCategory || 'image';
-              item.promptText = `[${info.fileType}] ${info.fileName}`;
-              item.displayText = info.fileName;
-              item.isDefaultName = false;
-              attachmentCache.set(cacheKey, {
-                fileName: info.fileName,
-                fileType: info.fileType,
-                fileCategory: item.fileCategory
+        // Strategy B: Fallback to user-turn live pool only if the round's DOM container wasn't already localized
+        if (!targetEl && !roundContainerResolved && livePool.length > 0) {
+          if (isSingleRoundForType && (roundTotalCount === 1 || livePool.length === roundTotalCount)) {
+            targetEl = livePool[subIdx] || null;
+          } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
+            const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
+            if (sameTextRoundsCount === 1) {
+              const matchedPool = livePool.filter(el => {
+                const parentTurn = el.closest(Utils.SELECTORS.query.chatTurn) || el.closest('.chat-turn-container.user');
+                if (!parentTurn) return false;
+                return textsLooselyMatch(getCleanPromptText(parentTurn), item.pureText);
               });
-              updated = true;
+              targetEl = matchedPool[subIdx] || null;
             }
           }
-        } else if (item.fileName && !item.isDefaultName) {
+        }
+
+        if (targetEl) {
+          const info = isImage
+            ? Utils.extractImageInfo(targetEl, subIdx, roundTotalCount)
+            : Utils.extractFileInfo(targetEl, subIdx, roundTotalCount);
+          const infoImprovesItem = !info.isDefaultName && info.fileName && (
+            item.isDefaultName ||
+            (!info.isTruncatedName && info.fileType !== 'FILE') ||
+            info.fileName !== item.fileName
+          );
+          if (infoImprovesItem) {
+            const nextFileType = (!isImage && info.fileType === 'FILE' && item.fileType && item.fileType !== 'FILE')
+              ? item.fileType
+              : info.fileType;
+            const nextCategory = (!isImage && info.fileType === 'FILE' && item.fileCategory && item.fileCategory !== 'file')
+              ? item.fileCategory
+              : (info.fileCategory || (isImage ? 'image' : 'file'));
+
+            item.fileName = info.fileName;
+            item.fileType = nextFileType;
+            item.fileCategory = nextCategory;
+            item.promptText = `[${nextFileType}] ${info.fileName}`;
+            item.displayText = info.fileName;
+            item.isDefaultName = false;
+            item.isTruncatedName = Boolean(info.isTruncatedName);
+            attachmentCache.set(cacheKey, {
+              fileName: info.fileName,
+              fileType: nextFileType,
+              fileCategory: nextCategory,
+              isTruncatedName: Boolean(info.isTruncatedName)
+            });
+            updated = true;
+          }
+        }
+      } else if (item.fileName && !item.isDefaultName) {
+        const existingCache = attachmentCache.get(cacheKey);
+        const shouldSaveToCache =
+          !existingCache ||
+          (existingCache.isTruncatedName && !item.isTruncatedName) ||
+          (existingCache.fileType === 'FILE' && item.fileType !== 'FILE') ||
+          !item.isTruncatedName;
+        if (shouldSaveToCache) {
           attachmentCache.set(cacheKey, {
             fileName: item.fileName,
             fileType: item.fileType,
-            fileCategory: item.fileCategory
+            fileCategory: item.fileCategory,
+            isTruncatedName: Boolean(item.isTruncatedName)
           });
         }
       }
@@ -823,36 +1002,68 @@
       // Smart Merge: prevent fallback placeholder names from overwriting previously resolved filenames
       if (oldData && oldData.length > 0) {
         newData.forEach((newItem) => {
-          if (newItem.type === 'image' && newItem.isDefaultName) {
-            const cacheKey = `${newItem.roundIndex}_${newItem.subIndex !== undefined ? newItem.subIndex : 0}`;
+          const canRestore = Boolean(
+            (newItem.type === 'image' || newItem.type === 'file') &&
+            (newItem.isDefaultName || (newItem.type === 'file' && newItem.isTruncatedName))
+          );
+          if (canRestore) {
+            const cacheKey = getAttachmentCacheKey(newItem.roundIndex, newItem);
             if (attachmentCache.has(cacheKey)) {
               const cached = attachmentCache.get(cacheKey);
-              newItem.fileName = cached.fileName;
-              newItem.fileType = cached.fileType;
-              if (cached.fileCategory) newItem.fileCategory = cached.fileCategory;
-              newItem.promptText = `[${cached.fileType}] ${cached.fileName}`;
-              newItem.displayText = cached.fileName;
-              newItem.isDefaultName = false;
+              const cacheIsBetter =
+                newItem.isDefaultName ||
+                (!cached.isTruncatedName && newItem.isTruncatedName) ||
+                (cached.fileType !== 'FILE' && newItem.fileType === 'FILE');
+              if (cacheIsBetter && cached.fileName) {
+                const preservedType = (!cached.fileType || cached.fileType === 'FILE') && newItem.fileType && newItem.fileType !== 'FILE'
+                  ? newItem.fileType
+                  : cached.fileType;
+                const preservedCat = (!cached.fileType || cached.fileType === 'FILE') && newItem.fileType && newItem.fileType !== 'FILE'
+                  ? newItem.fileCategory
+                  : (cached.fileCategory || newItem.fileCategory);
+                newItem.fileName = cached.fileName;
+                newItem.fileType = preservedType;
+                if (preservedCat) newItem.fileCategory = preservedCat;
+                newItem.promptText = `[${preservedType}] ${cached.fileName}`;
+                newItem.displayText = cached.fileName;
+                newItem.isDefaultName = false;
+                newItem.isTruncatedName = Boolean(cached.isTruncatedName);
+              }
             } else {
               const matchOld = oldData.find(o =>
-                o.type === 'image' &&
+                o.type === newItem.type &&
                 o.roundIndex === newItem.roundIndex &&
                 o.subIndex === newItem.subIndex &&
+                (!o.pureText || !newItem.pureText || textsLooselyMatch(o.pureText, newItem.pureText)) &&
                 !o.isDefaultName &&
                 o.fileName
               );
               if (matchOld) {
-                newItem.fileName = matchOld.fileName;
-                newItem.fileType = matchOld.fileType;
-                if (matchOld.fileCategory) newItem.fileCategory = matchOld.fileCategory;
-                newItem.promptText = `[${matchOld.fileType}] ${matchOld.fileName}`;
-                newItem.displayText = matchOld.fileName;
-                newItem.isDefaultName = false;
-                attachmentCache.set(cacheKey, {
-                  fileName: matchOld.fileName,
-                  fileType: matchOld.fileType,
-                  fileCategory: matchOld.fileCategory
-                });
+                const oldIsBetter =
+                  newItem.isDefaultName ||
+                  (!matchOld.isTruncatedName && newItem.isTruncatedName) ||
+                  (matchOld.fileType !== 'FILE' && newItem.fileType === 'FILE');
+                if (oldIsBetter) {
+                  const preservedType = (!matchOld.fileType || matchOld.fileType === 'FILE') && newItem.fileType && newItem.fileType !== 'FILE'
+                    ? newItem.fileType
+                    : matchOld.fileType;
+                  const preservedCat = (!matchOld.fileType || matchOld.fileType === 'FILE') && newItem.fileType && newItem.fileType !== 'FILE'
+                    ? newItem.fileCategory
+                    : (matchOld.fileCategory || newItem.fileCategory);
+                  newItem.fileName = matchOld.fileName;
+                  newItem.fileType = preservedType;
+                  if (preservedCat) newItem.fileCategory = preservedCat;
+                  newItem.promptText = `[${preservedType}] ${matchOld.fileName}`;
+                  newItem.displayText = matchOld.fileName;
+                  newItem.isDefaultName = false;
+                  newItem.isTruncatedName = Boolean(matchOld.isTruncatedName);
+                  attachmentCache.set(cacheKey, {
+                    fileName: matchOld.fileName,
+                    fileType: preservedType,
+                    fileCategory: preservedCat,
+                    isTruncatedName: Boolean(matchOld.isTruncatedName)
+                  });
+                }
               }
             }
           }
@@ -868,6 +1079,8 @@
               newData[i].turnElementId !== oldData[i].turnElementId ||
               newData[i].turnBadge !== oldData[i].turnBadge ||
               newData[i].fileName !== oldData[i].fileName ||
+              newData[i].fileType !== oldData[i].fileType ||
+              newData[i].fileCategory !== oldData[i].fileCategory ||
               newData[i].isDefaultName !== oldData[i].isDefaultName ||
               newData[i].targetDomIndex !== oldData[i].targetDomIndex ||
               newData[i].domLayoutMode !== oldData[i].domLayoutMode) {
@@ -935,30 +1148,86 @@
                     break;
                   }
                 }
+                if (
+                  !shouldEnrich &&
+                  ((node.classList && node.classList.contains('loading-icon')) ||
+                    (node.querySelector && node.querySelector('.loading-icon')))
+                ) {
+                  const targetUserCont = mutation.target && mutation.target.closest
+                    ? mutation.target.closest('.chat-turn-container.user')
+                    : null;
+                  if (targetUserCont) {
+                    shouldEnrich = true;
+                  }
+                }
               }
             }
           }
-          if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+          if (!shouldEnrich && mutation.addedNodes && mutation.addedNodes.length > 0) {
             for (let i = 0; i < mutation.addedNodes.length; i++) {
               const node = mutation.addedNodes[i];
               if (node.nodeType === Node.ELEMENT_NODE) {
                 const tag = node.tagName.toLowerCase();
-                if (tag === 'img' || tag === 'ms-image-chunk' || tag === 'ms-chat-turn' || tag === 'ms-prompt-chunk') {
+                if (
+                  tag === 'img' ||
+                  tag === 'ms-image-chunk' ||
+                  tag === 'ms-file-chunk' ||
+                  tag === 'ms-media-chunk' ||
+                  tag === 'ms-drive-file' ||
+                  tag === 'ms-chat-turn' ||
+                  tag === 'ms-prompt-chunk'
+                ) {
                   shouldEnrich = true;
                   break;
-                } else if (node.querySelector && node.querySelector('img, ms-image-chunk')) {
+                } else if (node.querySelector && node.querySelector('img, ms-image-chunk, ms-file-chunk, ms-media-chunk, ms-drive-file, .file-chunk-container, span.name')) {
+                  shouldEnrich = true;
+                  break;
+                }
+              } else if (node.nodeType === Node.TEXT_NODE) {
+                const parent = mutation.target;
+                if (
+                  parent &&
+                  parent.closest &&
+                  parent.closest('.chat-turn-container.user') &&
+                  parent.closest('ms-file-chunk, ms-media-chunk, ms-drive-file, .file-chunk-container, span.name')
+                ) {
                   shouldEnrich = true;
                   break;
                 }
               }
             }
           }
+        } else if (mutation.type === 'characterData') {
+          if (!shouldEnrich) {
+            const parent = mutation.target && mutation.target.parentElement;
+            if (
+              parent &&
+              parent.closest &&
+              parent.closest('.chat-turn-container.user') &&
+              parent.closest('ms-file-chunk, ms-media-chunk, ms-drive-file, .file-chunk-container, span.name')
+            ) {
+              const data = State.getCatalogData();
+              if (data && data.some(item => item.type === 'file' && (item.isDefaultName || item.isTruncatedName))) {
+                shouldEnrich = true;
+              }
+            }
+          }
         } else if (mutation.type === 'attributes') {
           const target = mutation.target;
-          if (target && target.tagName && target.tagName.toLowerCase() === 'img') {
-            if (target.closest && target.closest('.chat-turn-container.user')) {
-              const data = State.getCatalogData();
-              if (data && data.some(item => item.type === 'image' && item.isDefaultName)) {
+          if (target && target.closest && target.closest('.chat-turn-container.user')) {
+            const tag = target.tagName ? target.tagName.toLowerCase() : '';
+            const data = State.getCatalogData();
+            if (data && data.length > 0) {
+              if (tag === 'img' && data.some(item => item.type === 'image' && item.isDefaultName)) {
+                shouldEnrich = true;
+              } else if (
+                (tag === 'ms-file-chunk' ||
+                  tag === 'ms-media-chunk' ||
+                  tag === 'ms-drive-file' ||
+                  (target.classList && target.classList.contains('name')) ||
+                  target.closest('ms-file-chunk, ms-media-chunk, ms-drive-file')) &&
+                data.some(item => item.type === 'file' && (item.isDefaultName || item.isTruncatedName))
+              ) {
                 shouldEnrich = true;
               }
             }
@@ -979,6 +1248,7 @@
     observer.observe(conversationContainer, {
       childList: true,
       subtree: true,
+      characterData: true,
       attributes: true,
       attributeFilter: ['alt', 'title', 'data-filename', 'data-name']
     });
@@ -1980,17 +2250,34 @@
             }
             return imgs[idx] || imgs[imgs.length - 1] || cardEl;
           }
-        } else if (item.type === 'file' && item.fileName && !item.isDefaultName) {
-          const fileEls = Array.from(cardEl.querySelectorAll('ms-file-chunk, ms-media-chunk, [class*="file"], [class*="attachment"], [data-test-id*="file"]'));
-          const normName = normalizeTextForMatch(item.fileName);
-          const matchedChip = fileEls.find((el) => {
-            if (el.classList.contains('chat-turn-container')) return false;
+        } else if (item.type === 'file') {
+          const allFileEls = getTurnContentFiles(cardEl);
+          const visibleFiles = allFileEls.filter((el) => {
             const r = el.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) return false;
-            const txt = normalizeTextForMatch(el.textContent || '');
-            return Boolean(txt && normName && txt.includes(normName));
+            return r.width > 0 || r.height > 0;
           });
-          if (matchedChip) return matchedChip;
+          const fileEls = visibleFiles.length > 0 ? visibleFiles : allFileEls;
+          if (fileEls.length > 0) {
+            if (item.fileName && !item.isDefaultName) {
+              const matchedChip = fileEls.find((el) => doesFileElementMatchName(el, item.fileName));
+              if (matchedChip) return matchedChip;
+            }
+            const idx = item.subIndex || 0;
+            if (item.chunkTargetDomIndex !== undefined && item.chunkStartDomIndex !== undefined && item.chunkTargetDomIndex > item.chunkStartDomIndex) {
+              const liveTurns = getUserTurnElements();
+              const pos = liveTurns.indexOf(cardEl);
+              if (pos !== -1) {
+                let precedingFiles = 0;
+                const maxBack = Math.min(pos, item.chunkTargetDomIndex - item.chunkStartDomIndex);
+                for (let k = 1; k <= maxBack; k++) {
+                  precedingFiles += getTurnContentFiles(liveTurns[pos - k]).length;
+                }
+                const localIdx = Math.max(0, idx - precedingFiles);
+                if (fileEls[localIdx]) return fileEls[localIdx];
+              }
+            }
+            return fileEls[idx] || fileEls[fileEls.length - 1] || cardEl;
+          }
         }
         return cardEl;
       };

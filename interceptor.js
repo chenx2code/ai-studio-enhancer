@@ -8,6 +8,43 @@
     'UpdatePrompt'
   ];
 
+  // Collect short non-blob strings up to a shallow depth for attachment metadata inspection
+  function extractShallowSafeStrings(root) {
+    const out = [];
+    const seen = new Set();
+    const maxItems = 24;
+    const maxDepth = 4;
+
+    function walk(node, depth) {
+      if (out.length >= maxItems || node === null || node === undefined) return;
+      if (typeof node === 'string') {
+        const trimmed = node.trim();
+        if (!trimmed || trimmed.length >= 500) return;
+        if (/^data:[^;]+;base64,/i.test(trimmed)) return;
+        if (trimmed.length >= 180 && /^[A-Za-z0-9+/=_-]+$/.test(trimmed)) return;
+        if (!seen.has(trimmed)) {
+          seen.add(trimmed);
+          out.push(trimmed);
+        }
+        return;
+      }
+      if (depth >= maxDepth) return;
+      if (Array.isArray(node)) {
+        for (let i = 0; i < node.length && out.length < maxItems; i++) {
+          walk(node[i], depth + 1);
+        }
+      } else if (typeof node === 'object') {
+        const vals = Object.values(node);
+        for (let i = 0; i < vals.length && out.length < maxItems; i++) {
+          walk(vals[i], depth + 1);
+        }
+      }
+    }
+
+    walk(root, 0);
+    return out;
+  }
+
   // Check if a URL contains any of the target keywords
   function getTargetKeyword(url) {
     if (!url) return null;
@@ -58,9 +95,9 @@
                 if (turn[1] && Array.isArray(turn[1])) {
                   turn[1] = turn[1].map(() => '[OMITTED_IMAGE]');
                 }
-                // turn[3] is cloudFileContent
+                // turn[3] is cloudFileContent (preserve shallow metadata/MIME/filename strings while stripping heavy payloads)
                 if (turn[3] && Array.isArray(turn[3])) {
-                  const safeStrings = turn[3].filter(item => typeof item === 'string' && item.length < 1000);
+                  const safeStrings = extractShallowSafeStrings(turn[3]);
                   turn[3] = safeStrings.length > 0 ? safeStrings : ['[OMITTED_CLOUD_FILE]'];
                 }
                 // turn[12] is inlineContent
@@ -70,10 +107,9 @@
                     turn[12] = [turn[12][0], '[OMITTED_IMAGE_DATA]'];
                   }
                 }
-                // turn[23] is docContent
+                // turn[23] is docContent (preserve shallow metadata/MIME/filename strings while discarding heavy base64 data)
                 if (turn[23] && Array.isArray(turn[23])) {
-                  // Keep metadata/mimetype/filename (short strings < 1000 chars), discard heavy base64 data
-                  const safeStrings = turn[23].filter(item => typeof item === 'string' && item.length < 1000);
+                  const safeStrings = extractShallowSafeStrings(turn[23]);
                   turn[23] = safeStrings.length > 0 ? safeStrings : ['Document'];
                 }
               });

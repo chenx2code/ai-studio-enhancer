@@ -54,27 +54,167 @@
   };
 
   function getFriendlyFileType(mimeType) {
-    if (!mimeType || typeof mimeType !== 'string') return 'Document';
-    const type = mimeType.toLowerCase();
-    
+    if (!mimeType || typeof mimeType !== 'string') return 'File';
+    const raw = mimeType.trim();
+    if (!raw) return 'File';
+    const type = raw.toLowerCase();
+
+    // Check explicit filename extension before MIME substring rules to prevent false matches like "cmd.py"
+    if (!type.includes('/') && !type.includes('://')) {
+      const extMatch = type.match(/\.([a-z0-9]*[a-z][a-z0-9]{0,9})$/);
+      if (extMatch) {
+        const ext = extMatch[1];
+        if (ext === 'pdf') return 'PDF';
+        if (ext === 'md' || ext === 'markdown') return 'Markdown';
+        if (ext === 'csv') return 'CSV';
+        if (ext === 'tsv') return 'TSV';
+        if (ext === 'json') return 'JSON';
+        if (ext === 'html' || ext === 'htm') return 'HTML';
+        if (ext === 'xml') return 'XML';
+        if (ext === 'yaml' || ext === 'yml') return 'YAML';
+        if (ext === 'sql') return 'SQL';
+        if (ext === 'txt') return 'Text';
+        if (ext === 'py') return 'Python';
+        if (ext === 'js' || ext === 'jsx' || ext === 'mjs' || ext === 'cjs') return 'JavaScript';
+        if (ext === 'ts' || ext === 'tsx') return 'TypeScript';
+        if (ext.length <= 8) return ext.toUpperCase();
+        return 'File';
+      }
+    }
+
     if (type.includes('pdf')) return 'PDF';
-    if (type.includes('markdown') || type.includes('md')) return 'Markdown';
+    if (type.includes('markdown') || type === 'text/md' || type === 'md') return 'Markdown';
     if (type.includes('csv')) return 'CSV';
+    if (type.includes('tab-separated-values') || type === 'text/tsv') return 'TSV';
     if (type.includes('json')) return 'JSON';
     if (type.includes('html')) return 'HTML';
     if (type.includes('xml')) return 'XML';
+    if (type.includes('yaml')) return 'YAML';
+    if (type.includes('sql')) return 'SQL';
     if (type.includes('text/plain')) return 'Text';
     if (type.includes('python')) return 'Python';
-    if (type.includes('javascript') || type.includes('typescript')) return 'JS/TS';
-    
+    if (type.includes('javascript')) return 'JavaScript';
+    if (type.includes('typescript')) return 'TypeScript';
+    if (type.includes('vnd.google-apps.folder')) return 'Folder';
+    if (type.includes('vnd.google-apps.spreadsheet') || type.includes('spreadsheetml')) return 'Spreadsheet';
+    if (type.includes('vnd.google-apps.presentation') || type.includes('presentationml')) return 'Presentation';
+    if (type.includes('vnd.google-apps.document') || type.includes('wordprocessingml') || type.includes('msword')) return 'Document';
+
     const parts = type.split('/');
     if (parts.length === 2) {
       const subType = parts[1];
-      if (subType.length <= 8 && !subType.includes('vnd') && !subType.includes('+')) {
+      if (subType && subType !== 'octet-stream' && subType.length <= 8 && !subType.includes('vnd') && !subType.includes('+')) {
         return subType.toUpperCase();
       }
     }
-    return 'Document';
+    return 'File';
+  }
+
+  function friendlyTypeToTag(friendlyType, mimeOrName) {
+    const raw = (mimeOrName || '').toLowerCase();
+    if (friendlyType === 'Markdown') return 'MD';
+    if (friendlyType === 'Python') return 'PY';
+    if (friendlyType === 'Text') return 'TXT';
+    if (friendlyType === 'JavaScript') return 'JS';
+    if (friendlyType === 'TypeScript') return 'TS';
+    if (friendlyType === 'JS/TS') return 'JS';
+    if (friendlyType === 'Folder') return 'FOLDER';
+    if (friendlyType === 'Spreadsheet') return 'XLSX';
+    if (friendlyType === 'Presentation') return 'PPT';
+    if (friendlyType === 'Document') {
+      if (raw.includes('word') || raw.includes('google-apps.document') || /\.docx?$/i.test(raw)) {
+        return 'DOC';
+      }
+      return 'FILE';
+    }
+    if (!friendlyType || friendlyType === 'File' || friendlyType === 'Document') return 'FILE';
+    return friendlyType.toUpperCase();
+  }
+
+  function isValidExtensionFileName(str) {
+    if (!str || typeof str !== 'string') return '';
+    const trimmed = str.trim();
+    if (!trimmed || trimmed.length > 180) return '';
+    if (trimmed.includes('://') || /^data:/i.test(trimmed) || /^blob:/i.test(trimmed)) return '';
+    if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(trimmed)) return '';
+    if (/^(?:[a-z0-9-]+\.)*(?:google(?:apis)?|gstatic|youtube)\.com$/i.test(trimmed)) return '';
+    if (trimmed === '[OMITTED_CLOUD_FILE]' || trimmed === 'Document' || trimmed === 'File') return '';
+    if (/(\.\.\.|\u2026)$/.test(trimmed)) return '';
+    const m = trimmed.match(/^([^\/\\:*?"<>|\r\n]+\.([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9}))$/);
+    return m ? m[1].trim() : '';
+  }
+
+  function isMimeTypeString(str) {
+    if (!str || typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    if (!trimmed || trimmed.length > 120 || trimmed.includes(' ') || trimmed.includes('://')) return false;
+    return /^(application|text|audio|video|image|multipart|model)\/[a-zA-Z0-9.+_-]+$/i.test(trimmed);
+  }
+
+  function inferFileMetadataFromApiSlot(slotArray) {
+    const result = {
+      fileType: 'FILE',
+      fileCategory: 'file',
+      fileName: '',
+      friendlyType: 'File',
+      isDefaultName: true,
+      hasExplicitType: false
+    };
+    if (!Array.isArray(slotArray) || slotArray.length === 0) return result;
+
+    let detectedMime = '';
+    let detectedName = '';
+
+    const visit = (node, depth) => {
+      if (depth > 3 || node === null || node === undefined) return;
+      if (typeof node === 'string') {
+        const s = node.trim();
+        if (!s || s.length >= 300) return;
+        if (!detectedMime && isMimeTypeString(s) && s.toLowerCase() !== 'application/octet-stream') {
+          detectedMime = s;
+        }
+        if (!detectedName) {
+          const extName = isValidExtensionFileName(s);
+          if (extName) {
+            detectedName = extName;
+          }
+        }
+        return;
+      }
+      if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) {
+          visit(node[i], depth + 1);
+          if (detectedMime && detectedName) break;
+        }
+      }
+    };
+
+    visit(slotArray, 0);
+
+    if (detectedName) {
+      const extMatch = detectedName.match(/\.([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9})$/);
+      const tag = extMatch ? extMatch[1].toUpperCase() : 'FILE';
+      result.fileName = detectedName;
+      result.fileType = tag;
+      result.friendlyType = getFriendlyFileType(detectedName);
+      result.fileCategory = detectFileCategory(tag, detectedName, false);
+      result.isDefaultName = false;
+      result.hasExplicitType = true;
+      return result;
+    }
+
+    if (detectedMime) {
+      const friendly = getFriendlyFileType(detectedMime);
+      const tag = friendlyTypeToTag(friendly, detectedMime);
+      const isFolder = tag === 'FOLDER' || detectedMime.toLowerCase().includes('folder');
+      result.friendlyType = friendly;
+      result.fileType = tag;
+      result.fileCategory = detectFileCategory(tag, detectedMime, isFolder);
+      result.hasExplicitType = tag !== 'FILE';
+      return result;
+    }
+
+    return result;
   }
 
   function getAttachmentPlaceholder(turn) {
@@ -99,15 +239,26 @@
     }
     
     if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-      const friendlyType = getFriendlyFileType(docContent[0]);
-      return { 
-        text: friendlyType === 'Document' ? '[Document]' : `[${friendlyType} File]`, 
-        type: friendlyType.toLowerCase() 
+      const meta = inferFileMetadataFromApiSlot(docContent);
+      if (meta.fileName) {
+        return { text: `[${meta.fileName}]`, type: meta.fileCategory };
+      }
+      const friendly = meta.friendlyType;
+      return {
+        text: friendly === 'File' || friendly === 'Document' ? '[File]' : `[${friendly} File]`,
+        type: meta.fileType !== 'FILE' ? meta.fileType.toLowerCase() : 'file'
       };
     }
     
-    if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0 && typeof cloudFileContent[0] === 'string') {
-      return { text: '[PDF File]', type: 'pdf' };
+    if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0) {
+      const meta = inferFileMetadataFromApiSlot(cloudFileContent);
+      if (meta.fileName) {
+        return { text: `[${meta.fileName}]`, type: meta.fileCategory };
+      }
+      if (meta.hasExplicitType && meta.friendlyType !== 'File') {
+        return { text: `[${meta.friendlyType} File]`, type: meta.fileType.toLowerCase() };
+      }
+      return { text: '[File]', type: 'file' };
     }
     
     return null;
@@ -440,8 +591,372 @@
       fileType: fileType,
       fileCategory: 'image',
       isDefaultName: !realName,
+      isTruncatedName: false,
       imageIndex: imgIdx,
       totalImages: totalImages
+    };
+  }
+
+  function isDescendantElement(parent, child, boundary) {
+    let cur = child ? child.parentElement : null;
+    while (cur) {
+      if (cur === parent) return true;
+      if (boundary && cur === boundary) break;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function closestWithinBoundary(el, selector, boundary) {
+    if (!el || typeof el.closest !== 'function') return null;
+    const found = el.closest(selector);
+    if (!found) return null;
+    if (!boundary || found === boundary || isDescendantElement(boundary, found)) {
+      return found;
+    }
+    return null;
+  }
+
+  function isTurnContentImage(img) {
+    if (!img) return false;
+    if (
+      (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) ||
+      (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) ||
+      (img.alt && img.alt.trim().toLowerCase() === 'thinking')
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Collect file attachment elements within a turn or round root without descending into nested duplicates
+   * or misclassifying image-only preview wrappers as file chips.
+   */
+  function getTurnFileElements(rootEl) {
+    if (!rootEl || typeof rootEl.querySelectorAll !== 'function') return [];
+
+    const hasFileStructure = (el) => {
+      const tag = el.tagName ? el.tagName.toLowerCase() : '';
+      if (tag === 'ms-file-chunk' || tag === 'ms-drive-file') return true;
+      return Boolean(
+        el.getAttribute('data-filename') ||
+        el.getAttribute('data-name') ||
+        el.querySelector('.file-chunk-container, .name, [data-filename], [data-name]')
+      );
+    };
+
+    const shouldSkipElement = (el) => {
+      if (!el || el === rootEl) return true;
+      const tag = el.tagName ? el.tagName.toLowerCase() : '';
+      if (
+        tag === 'ms-chat-turn' ||
+        tag === 'ms-image-chunk' ||
+        tag === 'ms-youtube-chunk' ||
+        tag === 'ms-text-chunk' ||
+        tag === 'button' ||
+        (el.classList && (
+          el.classList.contains('chat-turn-container') ||
+          el.classList.contains('actions-container') ||
+          el.classList.contains('token-count') ||
+          el.classList.contains('loading-icon') ||
+          el.classList.contains('thumbnail-icon')
+        ))
+      ) {
+        return true;
+      }
+      if (closestWithinBoundary(el, 'ms-image-chunk, ms-youtube-chunk, ms-text-chunk, button', rootEl)) {
+        return true;
+      }
+      if (el.querySelector('ms-image-chunk, ms-youtube-chunk')) {
+        return true;
+      }
+      const imgs = Array.from(el.querySelectorAll('img')).filter(isTurnContentImage);
+      if (imgs.length > 0 && !hasFileStructure(el)) {
+        return true;
+      }
+      return false;
+    };
+
+    const accepted = [];
+    const acceptIfUnique = (el) => {
+      for (let i = 0; i < accepted.length; i++) {
+        if (accepted[i] === el || isDescendantElement(accepted[i], el, rootEl)) {
+          return;
+        }
+      }
+      accepted.push(el);
+    };
+
+    const structuredChunks = Array.from(
+      rootEl.querySelectorAll('ms-file-chunk, ms-media-chunk, ms-drive-file')
+    );
+    structuredChunks.forEach((el) => {
+      if (!shouldSkipElement(el)) {
+        acceptIfUnique(el);
+      }
+    });
+
+    const genericChips = Array.from(
+      rootEl.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], [data-test-id*="file"]')
+    );
+    genericChips.forEach((el) => {
+      if (shouldSkipElement(el)) return;
+      if (closestWithinBoundary(el, 'ms-file-chunk, ms-media-chunk, ms-drive-file', rootEl)) return;
+      if (el.querySelector('[class*="file"], [class*="chip"], [class*="attachment"], ms-file-chunk, ms-media-chunk, ms-drive-file')) {
+        return;
+      }
+      acceptIfUnique(el);
+    });
+
+    return accepted;
+  }
+
+  /**
+   * Extract clean filename and category from a rendered file attachment element (e.g. <ms-file-chunk>).
+   */
+  function extractFileInfo(fileEl, fileIdx, totalFiles) {
+    const safeIdx = typeof fileIdx === 'number' && fileIdx >= 0 ? fileIdx : 0;
+    const safeTotal = typeof totalFiles === 'number' && totalFiles > 0 ? totalFiles : 1;
+    const defaultWord = chrome.i18n.getMessage('fileLabel') || 'File';
+    const fallbackLabel = safeTotal > 1 ? `${defaultWord} ${safeIdx + 1}` : defaultWord;
+
+    const makeDefault = () => ({
+      fileName: fallbackLabel,
+      fileType: 'FILE',
+      fileCategory: 'file',
+      isDefaultName: true,
+      isTruncatedName: false,
+      fileIndex: safeIdx,
+      totalFiles: safeTotal
+    });
+
+    if (!fileEl) return makeDefault();
+
+    const FILE_UI_PLACEHOLDERS = new Set([
+      'docs',
+      'description',
+      'insert_drive_file',
+      'draft',
+      'article',
+      'picture_as_pdf',
+      'code',
+      'table_chart',
+      'folder',
+      'folder_open',
+      'attach_file',
+      'upload_file',
+      'progress_activity',
+      'hourglass_empty',
+      'sync',
+      'close',
+      'remove',
+      'delete',
+      'clear',
+      'cancel',
+      'open_in_new',
+      'download',
+      'more_vert',
+      'more_horiz',
+      'expand_more',
+      'chevron_right',
+      'loading',
+      'loading...',
+      'file',
+      '[file]',
+      'pdf file',
+      'document',
+      '[document]',
+      'attachment',
+      'run settings',
+      '文件',
+      '文档',
+      '附件',
+      '加载中',
+      '删除',
+      '移除',
+      '下载',
+      '关闭'
+    ]);
+
+    const cleanFileCandidate = (raw) => {
+      if (!raw || typeof raw !== 'string') return '';
+      return raw
+        .replace(/(?:\s|^)[\d,.]+[kKmM]?\s*tokens?\b/gi, '')
+        .replace(/^[\s·|-]+|[\s·|-]+$/g, '')
+        .trim();
+    };
+
+    const isPlaceholderCandidate = (val) => {
+      const cleaned = cleanFileCandidate(val);
+      if (!cleaned || cleaned.length >= 150) return true;
+      const lower = cleaned.toLowerCase();
+      if (FILE_UI_PLACEHOLDERS.has(lower)) return true;
+      if (lower.includes('run settings')) return true;
+      if (/^[\d,.]+[kKmM]?\s*tokens?$/i.test(cleaned)) return true;
+      return false;
+    };
+
+    const isIgnoredTextNodeContainer = (node) => {
+      if (!node || node.nodeType !== 1) return false;
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (tag === 'button' || tag === 'mat-icon' || tag === 'svg' || tag === 'style' || tag === 'script') {
+        return true;
+      }
+      if (node.getAttribute && node.getAttribute('aria-hidden') === 'true') {
+        return true;
+      }
+      if (node.classList && (
+        node.classList.contains('loading-icon') ||
+        node.classList.contains('thumbnail-icon') ||
+        node.classList.contains('token-count') ||
+        node.classList.contains('material-symbols-outlined') ||
+        node.classList.contains('material-icons') ||
+        node.classList.contains('material-symbols-rounded') ||
+        node.classList.contains('mat-icon') ||
+        node.classList.contains('cdk-visually-hidden') ||
+        node.classList.contains('sr-only')
+      )) {
+        return true;
+      }
+      return false;
+    };
+
+    const readCleanTextLines = (root) => {
+      const lines = [];
+      const visit = (node) => {
+        if (!node) return;
+        if (node.nodeType === 3) {
+          const val = (node.nodeValue || '').trim();
+          if (val) lines.push(val);
+          return;
+        }
+        if (isIgnoredTextNodeContainer(node)) return;
+
+        const hasChildNodes = node.childNodes && node.childNodes.length > 0;
+        if (hasChildNodes) {
+          for (let i = 0; i < node.childNodes.length; i++) {
+            visit(node.childNodes[i]);
+          }
+          return;
+        }
+
+        if (node.children && node.children.length > 0) {
+          for (let i = 0; i < node.children.length; i++) {
+            visit(node.children[i]);
+          }
+          return;
+        }
+
+        const txt = (node.textContent || '').trim();
+        if (txt) {
+          txt.split('\n').forEach((part) => {
+            const trimmed = part.trim();
+            if (trimmed) lines.push(trimmed);
+          });
+        }
+      };
+
+      visit(root);
+      return lines;
+    };
+
+    const nameEl = fileEl.querySelector('.name, [class*="file-name"], [class*="filename"]');
+    const explicitCandidates = [
+      fileEl.getAttribute('data-filename'),
+      fileEl.getAttribute('data-name')
+    ];
+    if (nameEl) {
+      explicitCandidates.push(
+        nameEl.getAttribute('data-filename'),
+        nameEl.getAttribute('data-name'),
+        nameEl.getAttribute('title'),
+        nameEl.title
+      );
+    }
+    explicitCandidates.push(fileEl.getAttribute('title'), fileEl.title);
+
+    const downloadLinks = fileEl.querySelectorAll('a[download]');
+    for (const link of downloadLinks) {
+      const dl = link.getAttribute('download');
+      if (dl) explicitCandidates.push(dl);
+    }
+
+    const nameElLines = nameEl ? readCleanTextLines(nameEl) : [];
+
+    const controlCandidates = [];
+    const ariaLabels = [fileEl.getAttribute('aria-label')];
+    const controls = fileEl.querySelectorAll('button[aria-label], a[aria-label], [ng-reflect-message]');
+    for (const ctrl of controls) {
+      ariaLabels.push(ctrl.getAttribute('aria-label'), ctrl.getAttribute('ng-reflect-message'));
+    }
+    ariaLabels.forEach((lbl) => {
+      if (!lbl || typeof lbl !== 'string') return;
+      const stripped = lbl.replace(/^(remove|delete|view|download|open|preview)\s+/i, '').trim();
+      if (isValidExtensionFileName(stripped)) {
+        controlCandidates.push(stripped);
+      }
+    });
+
+    const fallbackLines = (!nameEl || nameElLines.length === 0) ? readCleanTextLines(fileEl) : [];
+
+    const orderedCandidates = [];
+    const pushClean = (raw) => {
+      const cleaned = cleanFileCandidate(raw);
+      if (cleaned && !isPlaceholderCandidate(cleaned) && !orderedCandidates.includes(cleaned)) {
+        orderedCandidates.push(cleaned);
+      }
+    };
+
+    explicitCandidates.forEach(pushClean);
+    nameElLines.forEach(pushClean);
+    controlCandidates.forEach(pushClean);
+    fallbackLines.forEach(pushClean);
+
+    let realName = '';
+    const hasTruncatedSuffix = (s) => /(\.\.\.|\u2026)$/.test(s);
+
+    // Tier 1: Non-truncated candidate with an explicit valid file extension (so title="a.csv" beats "a.c...")
+    for (const cand of orderedCandidates) {
+      if (!hasTruncatedSuffix(cand) && isValidExtensionFileName(cand)) {
+        realName = cand;
+        break;
+      }
+    }
+
+    // Tier 2: Any non-truncated non-placeholder name (e.g. Google Doc title or folder)
+    if (!realName) {
+      for (const cand of orderedCandidates) {
+        if (!hasTruncatedSuffix(cand)) {
+          realName = cand;
+          break;
+        }
+      }
+    }
+
+    // Tier 3: Visually truncated name (only when full title is not available)
+    if (!realName && orderedCandidates.length > 0) {
+      realName = orderedCandidates[0];
+    }
+
+    if (!realName) {
+      return makeDefault();
+    }
+
+    const isTruncated = hasTruncatedSuffix(realName);
+    const extMatch = !isTruncated ? realName.match(/\.([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9})$/) : null;
+    const isFolder = !extMatch && /\bfolder\b/i.test(realName);
+    const fileType = extMatch ? extMatch[1].toUpperCase() : (isFolder ? 'FOLDER' : 'FILE');
+    const category = detectFileCategory(fileType, realName, isFolder);
+
+    return {
+      fileName: realName,
+      fileType: fileType,
+      fileCategory: category,
+      isDefaultName: false,
+      isTruncatedName: isTruncated,
+      fileIndex: safeIdx,
+      totalFiles: safeTotal
     };
   }
 
@@ -469,16 +984,7 @@
     // 1. Gather all rendered images across DOM cards of this round
     const domImages = [];
     elementList.forEach(({ element, domIndex }) => {
-      const images = Array.from(element.querySelectorAll('img')).filter((img) => {
-        if (
-          (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) ||
-          (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) ||
-          (img.alt && img.alt.trim().toLowerCase() === 'thinking')
-        ) {
-          return false;
-        }
-        return true;
-      });
+      const images = Array.from(element.querySelectorAll('img')).filter(isTurnContentImage);
       images.forEach((img, subIdx) => {
         domImages.push({ img, domIndex, subIdx });
       });
@@ -530,6 +1036,7 @@
             fileType: info.fileType,
             fileName: info.fileName,
             isDefaultName: info.isDefaultName,
+            isTruncatedName: false,
             domIndex: apiImg.domIndex,
             subIndex: slotIdx,
             turnIndex: apiImg.index
@@ -541,6 +1048,7 @@
             fileType: 'IMG',
             fileName: totalImages > 1 ? `${defaultWord} ${slotIdx + 1}` : defaultWord,
             isDefaultName: true,
+            isTruncatedName: false,
             domIndex: apiImg.domIndex,
             subIndex: slotIdx,
             turnIndex: apiImg.index
@@ -561,6 +1069,7 @@
           fileType: info.fileType,
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
+          isTruncatedName: false,
           domIndex: domIndex,
           subIndex: slotIdx,
           turnIndex: turnIndex
@@ -577,6 +1086,7 @@
           fileType: info.fileType,
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
+          isTruncatedName: false,
           domIndex: domIndex,
           subIndex: idx,
           turnIndex: turnIndex
@@ -584,47 +1094,20 @@
       });
     }
 
-    // 3. Extract file elements / chips across DOM cards of this round
+    // 3. Gather all rendered file elements across DOM cards of this round
+    const domFiles = [];
     elementList.forEach(({ element, domIndex }) => {
-      const fileElements = Array.from(element.querySelectorAll('[class*="file"], [class*="chip"], [class*="attachment"], ms-file-chunk, ms-media-chunk, [data-test-id*="file"]')).filter((el) => {
-        if (el.classList.contains('chat-turn-container') || el.tagName.toLowerCase() === 'ms-chat-turn') {
-          return false;
-        }
-        const text = el.textContent ? el.textContent.trim() : '';
-        if (!text || (fullText && text === fullText)) return false;
-        return !el.querySelector('[class*="file"], [class*="chip"], [class*="attachment"]');
+      const files = getTurnFileElements(element).filter((fel) => {
+        const rawText = fel.textContent ? fel.textContent.trim() : '';
+        return !(fullText && rawText && rawText === fullText);
       });
-
-      fileElements.forEach((fel) => {
-        let rawText = fel.textContent.trim();
-        rawText = rawText.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/i, '').trim();
-        const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-        let fName = lines.length > 1 ? lines[lines.length - 1] : lines[0];
-        fName = fName.replace(/\s*[\d,.]+[kKmM]?\s*tokens?/i, '').trim();
-
-        if (fName && fName.length < 150 && !fName.toLowerCase().includes('run settings')) {
-          const extMatch = fName.match(/\.([a-zA-Z0-9]+)$/);
-          let fileType = extMatch ? extMatch[1].toUpperCase() : 'PDF';
-          const isFolder = fName.toLowerCase().includes('folder');
-          const category = detectFileCategory(fileType, fName, isFolder);
-          const sig = `file:${fName}`;
-          if (!seenSignatures.has(sig)) {
-            seenSignatures.add(sig);
-            const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
-            attachments.push({
-              type: 'file',
-              fileCategory: category,
-              fileType: fileType,
-              fileName: fName,
-              domIndex: domIndex,
-              turnIndex: matchingChunk ? matchingChunk.index : (chunks[0] ? (chunks[0].index !== undefined ? chunks[0].index : undefined) : undefined)
-            });
-          }
-        }
+      files.forEach((fel, subIdx) => {
+        domFiles.push({ element: fel, domIndex, subIdx });
       });
     });
 
-    // 4. Extract or supplement from API chunks in this round
+    // 4. Gather video and file occurrences from API chunks in this round
+    const apiFiles = [];
     chunks.forEach((chunkItem) => {
       const turn = chunkItem.turn || chunkItem;
       const index = chunkItem.index;
@@ -644,6 +1127,8 @@
             fileCategory: 'video',
             fileType: 'Video',
             fileName: 'YouTube Video',
+            isDefaultName: false,
+            isTruncatedName: false,
             turnIndex: index,
             domIndex: domIndex
           });
@@ -651,63 +1136,147 @@
       }
 
       if (docContent && Array.isArray(docContent) && docContent.length > 0) {
-        const mimeOrName = docContent[0] || '';
-        let fileName = (docContent[1] && typeof docContent[1] === 'string' && docContent[1].length < 150) ? docContent[1] : '';
-        const friendlyType = getFriendlyFileType(mimeOrName);
-        let tag = friendlyType === 'Markdown' ? 'MD' : (friendlyType === 'Document' ? 'DOC' : friendlyType.toUpperCase());
-        const category = detectFileCategory(tag, fileName || mimeOrName, false);
-
-        // If we already have a DOM attachment without an accurate fileType, enhance it
-        const unassignedFile = attachments.find(a => a.type === 'file' && !a.enhanced);
-        if (unassignedFile) {
-          unassignedFile.fileType = tag;
-          unassignedFile.fileCategory = category;
-          unassignedFile.enhanced = true;
-          unassignedFile.turnIndex = index;
-          if (unassignedFile.domIndex === undefined) unassignedFile.domIndex = domIndex;
-        } else {
-          if (!fileName) {
-            fileName = `${friendlyType} ${chrome.i18n.getMessage('fileLabel') || 'File'}`;
-          }
-          const sig = `file:${fileName}:${index}`;
-          if (!seenSignatures.has(sig)) {
-            seenSignatures.add(sig);
-            attachments.push({
-              type: 'file',
-              fileCategory: category,
-              fileType: tag,
-              fileName: fileName,
-              turnIndex: index,
-              domIndex: domIndex
-            });
-          }
-        }
+        apiFiles.push({
+          source: 'doc',
+          meta: inferFileMetadataFromApiSlot(docContent),
+          index: index,
+          domIndex: domIndex
+        });
       }
 
       if (cloudFileContent && Array.isArray(cloudFileContent) && cloudFileContent.length > 0) {
-        const unassignedFile = attachments.find(a => a.type === 'file' && !a.enhanced);
-        if (unassignedFile) {
-          unassignedFile.fileType = 'PDF';
-          unassignedFile.fileCategory = 'pdf';
-          unassignedFile.enhanced = true;
-          unassignedFile.turnIndex = index;
-          if (unassignedFile.domIndex === undefined) unassignedFile.domIndex = domIndex;
-        } else {
-          const sig = `file:cloud:${index}`;
-          if (!seenSignatures.has(sig)) {
-            seenSignatures.add(sig);
-            attachments.push({
-              type: 'file',
-              fileCategory: 'pdf',
-              fileType: 'PDF',
-              fileName: `PDF ${chrome.i18n.getMessage('fileLabel') || 'File'}`,
-              turnIndex: index,
-              domIndex: domIndex
-            });
-          }
-        }
+        apiFiles.push({
+          source: 'cloud',
+          meta: inferFileMetadataFromApiSlot(cloudFileContent),
+          index: index,
+          domIndex: domIndex
+        });
       }
     });
+
+    const totalFiles = Math.max(domFiles.length, apiFiles.length);
+    const defaultFileWord = chrome.i18n.getMessage('fileLabel') || 'File';
+    let emittedFileCount = 0;
+
+    // 5. Align DOM file chips and API file slots without overwriting resolved filenames/types with PDF
+    if (apiFiles.length > 0) {
+      const usedDomFiles = new Set();
+      const useChunkFileAlignment = elementList.length > 1;
+
+      apiFiles.forEach((apiFile) => {
+        const fileSlotIdx = emittedFileCount++;
+        const slotFallbackName = totalFiles > 1 ? `${defaultFileWord} ${fileSlotIdx + 1}` : defaultFileWord;
+        let matchedDomIdx = -1;
+
+        if (useChunkFileAlignment && apiFile.domIndex !== undefined) {
+          matchedDomIdx = domFiles.findIndex((d, i) => !usedDomFiles.has(i) && d.domIndex === apiFile.domIndex);
+        } else {
+          matchedDomIdx = domFiles.findIndex((_, i) => !usedDomFiles.has(i));
+        }
+
+        const meta = apiFile.meta;
+        if (matchedDomIdx !== -1) {
+          usedDomFiles.add(matchedDomIdx);
+          const { element: fel } = domFiles[matchedDomIdx];
+          const info = extractFileInfo(fel, fileSlotIdx, totalFiles);
+
+          let finalName = info.fileName;
+          let finalType = info.fileType;
+          let finalCategory = info.fileCategory;
+          let finalIsDefault = info.isDefaultName;
+          let finalIsTruncated = info.isTruncatedName;
+
+          if (info.isDefaultName) {
+            if (meta.fileName) {
+              finalName = meta.fileName;
+              finalType = meta.fileType;
+              finalCategory = meta.fileCategory;
+              finalIsDefault = false;
+              finalIsTruncated = false;
+            } else if (meta.hasExplicitType) {
+              finalType = meta.fileType;
+              finalCategory = meta.fileCategory;
+              if (meta.friendlyType && meta.friendlyType !== 'File') {
+                finalName = `${meta.friendlyType} ${defaultFileWord}`;
+              }
+            }
+          } else if (finalType === 'FILE' && finalCategory === 'file' && meta.hasExplicitType) {
+            finalType = meta.fileType;
+            finalCategory = meta.fileCategory;
+          }
+
+          attachments.push({
+            type: 'file',
+            fileCategory: finalCategory,
+            fileType: finalType,
+            fileName: finalName,
+            isDefaultName: finalIsDefault,
+            isTruncatedName: finalIsTruncated,
+            domIndex: apiFile.domIndex,
+            subIndex: fileSlotIdx,
+            turnIndex: apiFile.index
+          });
+        } else {
+          let fallbackName = slotFallbackName;
+          if (meta.fileName) {
+            fallbackName = meta.fileName;
+          } else if (meta.hasExplicitType && meta.friendlyType && meta.friendlyType !== 'File') {
+            fallbackName = `${meta.friendlyType} ${defaultFileWord}`;
+          }
+
+          attachments.push({
+            type: 'file',
+            fileCategory: meta.fileCategory,
+            fileType: meta.fileType,
+            fileName: fallbackName,
+            isDefaultName: meta.isDefaultName,
+            isTruncatedName: false,
+            domIndex: apiFile.domIndex,
+            subIndex: fileSlotIdx,
+            turnIndex: apiFile.index
+          });
+        }
+      });
+
+      // Append any remaining DOM files beyond apiFiles count
+      domFiles.forEach(({ element: fel, domIndex }, i) => {
+        if (usedDomFiles.has(i)) return;
+        const fileSlotIdx = emittedFileCount++;
+        const info = extractFileInfo(fel, fileSlotIdx, totalFiles);
+        if (info.isDefaultName && domFiles.length > apiFiles.length) return;
+        const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
+        const turnIndex = matchingChunk ? matchingChunk.index : (chunks[0] ? (chunks[0].index !== undefined ? chunks[0].index : undefined) : undefined);
+        attachments.push({
+          type: 'file',
+          fileCategory: info.fileCategory,
+          fileType: info.fileType,
+          fileName: info.fileName,
+          isDefaultName: info.isDefaultName,
+          isTruncatedName: info.isTruncatedName,
+          domIndex: domIndex,
+          subIndex: fileSlotIdx,
+          turnIndex: turnIndex
+        });
+      });
+    } else if (domFiles.length > 0) {
+      domFiles.forEach(({ element: fel, domIndex }) => {
+        const fileSlotIdx = emittedFileCount++;
+        const info = extractFileInfo(fel, fileSlotIdx, totalFiles);
+        const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
+        const turnIndex = matchingChunk ? matchingChunk.index : (chunks[0] ? (chunks[0].index !== undefined ? chunks[0].index : undefined) : undefined);
+        attachments.push({
+          type: 'file',
+          fileCategory: info.fileCategory,
+          fileType: info.fileType,
+          fileName: info.fileName,
+          isDefaultName: info.isDefaultName,
+          isTruncatedName: info.isTruncatedName,
+          domIndex: domIndex,
+          subIndex: fileSlotIdx,
+          turnIndex: turnIndex
+        });
+      });
+    }
 
     return attachments;
   }
@@ -755,6 +1324,8 @@
     createToolbarButton,
     detectFileCategory,
     extractImageInfo,
+    getTurnFileElements,
+    extractFileInfo,
     extractRoundAttachments,
     extractUserAccount
   };
