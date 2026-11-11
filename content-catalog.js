@@ -59,7 +59,7 @@
     return result;
   }
 
-  // Extract visible prompt text from a chat turn element while skipping UI buttons/icons and token counters
+  // Extract visible prompt text from a chat turn element while skipping UI buttons/icons, attachments, and token counters
   function getCleanPromptText(turnEl) {
     if (!turnEl) return '';
     const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
@@ -68,7 +68,21 @@
       let cur = node.parentElement;
       while (cur && cur !== container) {
         const tag = cur.tagName;
-        if (tag === 'BUTTON' || tag === 'MAT-ICON' || tag === 'SVG' || tag === 'STYLE' || tag === 'SCRIPT' || tag === 'NOSCRIPT') {
+        if (
+          tag === 'BUTTON' ||
+          tag === 'MAT-ICON' ||
+          tag === 'SVG' ||
+          tag === 'STYLE' ||
+          tag === 'SCRIPT' ||
+          tag === 'NOSCRIPT' ||
+          tag === 'MS-FILE-CHUNK' ||
+          tag === 'MS-DRIVE-FILE' ||
+          tag === 'MS-IMAGE-CHUNK' ||
+          tag === 'MS-MEDIA-CHUNK' ||
+          tag === 'MS-YOUTUBE-CHUNK' ||
+          tag === 'MS-VIDEO-CHUNK' ||
+          tag === 'MS-AUDIO-CHUNK'
+        ) {
           return true;
         }
         if (cur.getAttribute && cur.getAttribute('aria-hidden') === 'true') {
@@ -80,7 +94,12 @@
           cur.classList.contains('material-symbols-rounded') ||
           cur.classList.contains('mat-icon') ||
           cur.classList.contains('cdk-visually-hidden') ||
-          cur.classList.contains('sr-only')
+          cur.classList.contains('sr-only') ||
+          cur.classList.contains('file-chunk-container') ||
+          cur.classList.contains('actions-container') ||
+          cur.classList.contains('token-count') ||
+          cur.classList.contains('loading-icon') ||
+          cur.classList.contains('katex-mathml')
         )) {
           return true;
         }
@@ -119,6 +138,8 @@
     if (!text || typeof text !== 'string') return '';
     return text
       .replace(/^\s{0,3}(?:```+|~~~+)[^\n]*$/gm, ' ')
+      .replace(/^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*(?::?-{2,}:?\s*)?$/gm, ' ')
+      .replace(/\|/g, ' ')
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/^\s{0,3}(?:>+\s*|#{1,6}\s+|[-*+]\s+|\d+\.\s+)/gm, '')
       .replace(/[`*~]+/g, '')
@@ -169,10 +190,18 @@
     return Utils.getTurnFileElements(turnEl);
   }
 
+  function getTurnContentVideos(turnEl) {
+    if (!turnEl) return [];
+    const structured = Array.from(turnEl.querySelectorAll('ms-youtube-chunk, ms-video-chunk'));
+    if (structured.length > 0) return structured;
+    return Array.from(turnEl.querySelectorAll('iframe[src*="youtube"], video'));
+  }
+
   function turnHasAttachment(turnEl) {
     if (!turnEl) return false;
     if (getTurnContentImages(turnEl).length > 0) return true;
     if (getTurnContentFiles(turnEl).length > 0) return true;
+    if (getTurnContentVideos(turnEl).length > 0) return true;
     return Boolean(
       turnEl.querySelector(
         'ms-file-chunk, ms-media-chunk, ms-image-chunk, ms-youtube-chunk, ms-video-chunk, ms-audio-chunk, ms-drive-file, [class*="file"], [class*="attachment"], [data-test-id*="file"]'
@@ -188,8 +217,12 @@
     const imgs = getTurnContentImages(turnEl);
     for (const img of imgs) {
       const alt = (img.alt || '').trim().toLowerCase();
-      if (alt && (alt === cleanTarget || alt.includes(cleanTarget) || cleanTarget.includes(alt))) return true;
-      if (img.src && !img.src.startsWith('data:') && img.src.toLowerCase().includes(cleanTarget)) return true;
+      if (alt && (alt === cleanTarget || alt.includes(cleanTarget) || (alt.length >= 4 && cleanTarget.includes(alt)))) {
+        return true;
+      }
+      if (img.src && !img.src.startsWith('data:') && cleanTarget.length >= 4 && img.src.toLowerCase().includes(cleanTarget)) {
+        return true;
+      }
     }
     return false;
   }
@@ -264,7 +297,9 @@
     if (!turnHasAttachment(turnEl)) return false;
     const normTarget = normalizeTextForMatch(fileName);
     if (!normTarget) return false;
-    const normTurnText = normalizeTextForMatch(getCleanPromptText(turnEl));
+    const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
+    const rawTurnText = (container.textContent || '').replace(/[\d,.]+[kKmM]?\s*tokens?/gi, ' ');
+    const normTurnText = normalizeTextForMatch(rawTurnText);
     if (normTurnText && normTurnText.includes(normTarget)) return true;
     const compTarget = compactTextForMatch(normTarget);
     const compTurn = compactTextForMatch(normTurnText);
@@ -326,6 +361,12 @@
       const probeSet = new Set([0, Math.floor(totalRounds / 2), totalRounds - 1]);
       for (const round of roundsSummary) {
         if (probeSet.size >= 6) break;
+        if (round.hasAttachments && round.fullText && round.chunkEndDomIndex > round.chunkStartDomIndex) {
+          probeSet.add(round.roundIndex);
+        }
+      }
+      for (const round of roundsSummary) {
+        if (probeSet.size >= 6) break;
         if (round.hasAttachments && round.fullText) {
           probeSet.add(round.roundIndex);
         }
@@ -337,8 +378,9 @@
         }
       }
 
-      let roundModeConsistent = true;
       let verifiedProbes = 0;
+      let coLocatedMultiChunkHits = 0;
+      let contradictions = 0;
 
       for (const rIdx of probeSet) {
         const round = roundsSummary[rIdx];
@@ -346,48 +388,139 @@
         if (!round || !el) continue;
 
         const normRoundText = compactTextForMatch(normalizeTextForMatch(round.fullText));
+        const domText = getCleanPromptText(el);
+        const normDomText = compactTextForMatch(normalizeTextForMatch(domText));
+        const hasDomAtt = turnHasAttachment(el);
+        const rawNonTokenLen = (el.textContent || '').replace(/[\d,.]+[kKmM]?\s*tokens?/gi, '').trim().length;
+        // Skip empty unhydrated lazy placeholders so missing inner text/attachments are never counted as contradictions
+        const isTurnHydrated = normDomText.length > 0 || hasDomAtt || rawNonTokenLen > 0;
+        if (!isTurnHydrated) continue;
+
+        let textMatched = false;
+        let attMatched = false;
+
         if (round.fullText && normRoundText.length > 0) {
-          const domText = getCleanPromptText(el);
-          const normDomText = compactTextForMatch(normalizeTextForMatch(domText));
-          const textMatches = normRoundText.length >= 6
-            ? textsLooselyMatch(domText, round.fullText)
-            : normDomText === normRoundText;
-          if (!textMatches) {
-            roundModeConsistent = false;
-            break;
+          if (normRoundText.length >= 6) {
+            textMatched = textsLooselyMatch(domText, round.fullText);
+            if (textMatched) {
+              verifiedProbes++;
+            } else if (normDomText.length >= 6) {
+              contradictions++;
+            }
+          } else {
+            textMatched = normDomText === normRoundText || normDomText.includes(normRoundText);
+            if (textMatched) {
+              verifiedProbes++;
+            } else if (normDomText.length > 0) {
+              contradictions++;
+            }
           }
-          verifiedProbes++;
         }
 
         if (round.hasAttachments) {
-          if (!turnHasAttachment(el)) {
-            roundModeConsistent = false;
-            break;
+          attMatched = hasDomAtt;
+          if (attMatched) {
+            verifiedProbes++;
+          } else if (normDomText.length > 0 || rawNonTokenLen > 0) {
+            contradictions++;
           }
-          verifiedProbes++;
+        }
+
+        if (round.chunkEndDomIndex > round.chunkStartDomIndex && round.hasAttachments && round.fullText && textMatched && attMatched) {
+          coLocatedMultiChunkHits++;
         }
       }
 
-      if (!roundModeConsistent) {
+      if (coLocatedMultiChunkHits > 0 && contradictions === 0) {
+        return { mode: 'round', totalDomTurns: totalRounds };
+      }
+      if (contradictions >= 2 || (contradictions >= 1 && verifiedProbes === 0) || (contradictions > 0 && coLocatedMultiChunkHits === 0)) {
         return { mode: 'chunk', totalDomTurns: totalUserChunks };
       }
       if (verifiedProbes > 0) {
         return { mode: 'round', totalDomTurns: totalRounds };
       }
-      return { mode: null, totalDomTurns: totalUserChunks };
     }
 
-    // Partially rendered DOM (virtualized): inspect any visible multi-chunk round with both text and attachments
+    // Partially rendered DOM (virtualized / lazy-hydrated):
+    // 1. Positive co-located check: a visible multi-chunk round already showing both text and attachments proves 'round' mode
+    const multiChunkMatchesWithoutAtt = [];
     for (const round of roundsSummary) {
-      if (round.hasAttachments && round.fullText && compactTextForMatch(normalizeTextForMatch(round.fullText)).length >= 6) {
+      if (
+        round.chunkEndDomIndex > round.chunkStartDomIndex &&
+        round.hasAttachments &&
+        round.fullText &&
+        compactTextForMatch(normalizeTextForMatch(round.fullText)).length >= 6
+      ) {
         const matchedEls = userTurnElements.filter(el => textsLooselyMatch(getCleanPromptText(el), round.fullText));
         if (matchedEls.length === 1) {
           if (turnHasAttachment(matchedEls[0])) {
             return { mode: 'round', totalDomTurns: totalRounds };
           }
-          return { mode: 'chunk', totalDomTurns: totalUserChunks };
+          multiChunkMatchesWithoutAtt.push(round);
         }
       }
+    }
+
+    // 2. Compare pairwise DOM gaps between unique visible text anchors vs round vs chunk spacing
+    // (runs before inferring 'chunk' from missing attachment DOM in case attachments load lazily)
+    if (userTurnElements.length >= 2) {
+      const roundCompCount = new Map();
+      const roundCompMap = new Map();
+      for (const r of roundsSummary) {
+        if (!r.fullText) continue;
+        const c = compactTextForMatch(normalizeTextForMatch(r.fullText));
+        if (c.length >= 6) {
+          roundCompCount.set(c, (roundCompCount.get(c) || 0) + 1);
+          roundCompMap.set(r.roundIndex, c);
+        }
+      }
+      const uniqueAnchors = [];
+      for (let p = 0; p < userTurnElements.length; p++) {
+        const domTxt = getCleanPromptText(userTurnElements[p]);
+        const dComp = compactTextForMatch(normalizeTextForMatch(domTxt));
+        if (dComp.length < 6) continue;
+        let matchedRound = null;
+        let hits = 0;
+        for (const r of roundsSummary) {
+          const rComp = roundCompMap.get(r.roundIndex);
+          if (!rComp || roundCompCount.get(rComp) !== 1) continue;
+          if (textsLooselyMatch(domTxt, r.fullText)) {
+            matchedRound = r;
+            hits++;
+            if (hits > 1) break;
+          }
+        }
+        if (hits === 1 && matchedRound) {
+          uniqueAnchors.push({ domPos: p, round: matchedRound });
+        }
+      }
+      let roundVotes = 0;
+      let chunkVotes = 0;
+      for (let i = 0; i < uniqueAnchors.length; i++) {
+        for (let j = i + 1; j < uniqueAnchors.length; j++) {
+          const a = uniqueAnchors[i];
+          const b = uniqueAnchors[j];
+          const domDelta = b.domPos - a.domPos;
+          const roundDelta = b.round.roundIndex - a.round.roundIndex;
+          const chunkDelta = b.round.chunkTextDomIndex - a.round.chunkTextDomIndex;
+          if (domDelta > 0 && roundDelta !== chunkDelta) {
+            if (domDelta === roundDelta) roundVotes++;
+            else if (domDelta === chunkDelta) chunkVotes++;
+          }
+        }
+      }
+      if (roundVotes > 0 && chunkVotes === 0) {
+        return { mode: 'round', totalDomTurns: totalRounds };
+      }
+      if (chunkVotes > 0 && roundVotes === 0) {
+        return { mode: 'chunk', totalDomTurns: totalUserChunks };
+      }
+    }
+
+    // 3. Fallback when spacing was ambiguous but a multi-chunk round's text turn has no attachment
+    if (multiChunkMatchesWithoutAtt.length > 0) {
+      return { mode: 'chunk', totalDomTurns: totalUserChunks };
     }
 
     const existingStamped = document.querySelector('ms-chat-turn[data-enhancer-dom-mode]');
@@ -397,7 +530,7 @@
       if (m === 'chunk') return { mode: 'chunk', totalDomTurns: totalUserChunks };
     }
 
-    return { mode: null, totalDomTurns: totalUserChunks };
+    return { mode: null, totalDomTurns: totalRounds };
   }
 
   function getAttachmentCacheKey(roundIdx, itemOrType, subIdxOpt) {
@@ -479,12 +612,13 @@
         fullText: textParts.join(' '),
         hasAttachments: round.hasAttachmentChunk || round.chunks.length > 1,
         chunkStartDomIndex: round.startDomIndex,
-        chunkEndDomIndex: round.endDomIndex
+        chunkEndDomIndex: round.endDomIndex,
+        chunkTextDomIndex: round.textDomIndex
       };
     });
 
     const detected = detectDomLayoutMode(userTurnElements, roundsSummary, totalUserChunks);
-    const effectiveMode = detected.mode || 'chunk';
+    const effectiveMode = detected.mode || 'round';
     const isFullDomPresent = Boolean(detected.mode && detected.totalDomTurns > 0 && userTurnElements.length === detected.totalDomTurns);
 
     // Only stamp sequential DOM indices when all expected user turns are mounted in DOM
@@ -516,10 +650,12 @@
       // Match DOM elements belonging to this round ONLY when verified complete or uniquely text-matched
       const roundElements = [];
       let turnElement = null;
+      let textTurnElement = null;
       if (isFullDomPresent) {
         if (effectiveMode === 'round') {
           if (userTurnElements[roundIdx]) {
             turnElement = userTurnElements[roundIdx];
+            textTurnElement = turnElement;
             roundElements.push({ element: turnElement, domIndex: roundIdx });
           }
         } else {
@@ -529,6 +665,7 @@
             }
           }
           turnElement = userTurnElements[round.startDomIndex] || null;
+          textTurnElement = userTurnElements[round.textDomIndex] || turnElement;
         }
       } else if (fullText && userTurnElements.length > 0 && compactTextForMatch(normalizeTextForMatch(fullText)).length >= 6) {
         const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, fullText)).length;
@@ -536,6 +673,7 @@
           const textMatches = userTurnElements.filter(el => textsLooselyMatch(getCleanPromptText(el), fullText));
           if (textMatches.length === 1) {
             const matchedEl = textMatches[0];
+            textTurnElement = matchedEl;
             if (effectiveMode === 'round' || round.startDomIndex === round.textDomIndex) {
               turnElement = matchedEl;
             }
@@ -547,6 +685,7 @@
         }
       }
       const turnElementId = turnElement && turnElement.id ? turnElement.id : null;
+      const textElementId = textTurnElement && textTurnElement.id ? textTurnElement.id : turnElementId;
 
       // Extract attachments from matched DOM elements (if safely resolved) and API chunks in this round
       const attachments = extractRoundAttachments(round.chunks, roundElements, fullText);
@@ -610,6 +749,7 @@
 
       const resolvedStartDomIndex = effectiveMode === 'round' ? roundIdx : round.startDomIndex;
       const resolvedEndDomIndex = effectiveMode === 'round' ? roundIdx : round.endDomIndex;
+      const resolvedTextDomIndex = effectiveMode === 'round' ? roundIdx : round.textDomIndex;
 
       if (fullText) {
         // A. Round has text: text row is turn root (gets the sequence badge)
@@ -625,12 +765,12 @@
           turnIndex: primaryIndex,
           startDomIndex: resolvedStartDomIndex,
           endDomIndex: resolvedEndDomIndex,
-          targetDomIndex: resolvedStartDomIndex,
+          targetDomIndex: resolvedTextDomIndex,
           chunkStartDomIndex: round.startDomIndex,
           chunkEndDomIndex: round.endDomIndex,
           chunkTextDomIndex: round.textDomIndex,
-          chunkTargetDomIndex: round.startDomIndex,
-          turnElementId: turnElementId,
+          chunkTargetDomIndex: round.textDomIndex,
+          turnElementId: textElementId,
           promptText: fullText,
           pureText: fullText,
           displayText: fullText,
@@ -650,6 +790,8 @@
             ? attChunk.domIndex
             : ((effectiveMode !== 'round' && att.domIndex !== undefined) ? att.domIndex : round.startDomIndex);
           const attTargetDomIndex = effectiveMode === 'round' ? roundIdx : chunkAttDomIndex;
+          const attDomEl = isFullDomPresent ? userTurnElements[attTargetDomIndex] : null;
+          const attElementId = (attDomEl && attDomEl.id) ? attDomEl.id : (chunkAttDomIndex === round.startDomIndex ? turnElementId : null);
 
           userPrompts.push({
             roundIndex: roundIdx,
@@ -675,7 +817,7 @@
             chunkEndDomIndex: round.endDomIndex,
             chunkTextDomIndex: round.textDomIndex,
             chunkTargetDomIndex: chunkAttDomIndex,
-            turnElementId: turnElementId,
+            turnElementId: attElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
             subIndex: subIndex,
@@ -696,6 +838,8 @@
             ? attChunk.domIndex
             : ((effectiveMode !== 'round' && att.domIndex !== undefined) ? att.domIndex : round.startDomIndex);
           const attTargetDomIndex = effectiveMode === 'round' ? roundIdx : chunkAttDomIndex;
+          const attDomEl = isFullDomPresent ? userTurnElements[attTargetDomIndex] : null;
+          const attElementId = (attDomEl && attDomEl.id) ? attDomEl.id : (chunkAttDomIndex === round.startDomIndex ? turnElementId : null);
 
           userPrompts.push({
             roundIndex: roundIdx,
@@ -721,7 +865,7 @@
             chunkEndDomIndex: round.endDomIndex,
             chunkTextDomIndex: round.textDomIndex,
             chunkTargetDomIndex: chunkAttDomIndex,
-            turnElementId: turnElementId,
+            turnElementId: attElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
             subIndex: subIndex,
@@ -762,6 +906,8 @@
 
   function clearAttachmentCache() {
     attachmentCache.clear();
+    activeNavState = null;
+    lastNavigationEndAt = 0;
     const stampedTurns = document.querySelectorAll('ms-chat-turn[data-enhancer-dom-index]');
     stampedTurns.forEach((el) => {
       el.removeAttribute('data-enhancer-dom-index');
@@ -1242,10 +1388,27 @@
               newData[i].isTruncatedName !== oldData[i].isTruncatedName ||
               newData[i].driveFileId !== oldData[i].driveFileId ||
               newData[i].targetDomIndex !== oldData[i].targetDomIndex ||
+              newData[i].chunkTargetDomIndex !== oldData[i].chunkTargetDomIndex ||
               newData[i].domLayoutMode !== oldData[i].domLayoutMode) {
             isDifferent = true;
             break;
           }
+        }
+      }
+
+      if (newData.length === 0) {
+        activeNavState = null;
+        lastNavigationEndAt = 0;
+      } else if (activeNavState && activeNavState.catalogItem) {
+        const navItem = activeNavState.catalogItem;
+        const stillExists = newData.some(item =>
+          item.roundIndex === navItem.roundIndex &&
+          item.type === navItem.type &&
+          (!navItem.pureText || !item.pureText || textsLooselyMatch(item.pureText, navItem.pureText))
+        );
+        if (!stillExists) {
+          activeNavState = null;
+          lastNavigationEndAt = 0;
         }
       }
 
@@ -1474,6 +1637,9 @@
   let navigationSafetyTimer = null;
   let searchSettleTimer = null;
   let isNavigating = false;
+  let navigationToken = 0;
+  let lastNavigationEndAt = 0;
+  let activeNavState = null; // Preserves the clicked catalog item across post-landing render updates
 
   // Retrieve the primary scrollable container for AI Studio chat history
   function getChatScrollContainer() {
@@ -1527,59 +1693,131 @@
       };
     }
     const rect = scroller.getBoundingClientRect();
-    return { top: rect.top, height: rect.height };
+    const clientTop = scroller.clientTop || 0;
+    const visibleHeight = scroller.clientHeight > 0
+      ? Math.min(rect.height || scroller.clientHeight, scroller.clientHeight)
+      : rect.height;
+    return { top: rect.top + clientTop, height: visibleHeight };
+  }
+
+  function computeDesiredTop(targetRect, scrollerMetrics, catalogItem) {
+    const isAttachment = Boolean(catalogItem && catalogItem.type !== 'text');
+    if (!isAttachment) return 80;
+    const targetH = targetRect ? targetRect.height : 0;
+    if (!targetH || targetH <= 0) return 80;
+    return Math.max(80, Math.round((scrollerMetrics.height - targetH) / 2));
+  }
+
+  function applyNavSelectionHighlight(list, catalogItem, includeFlightClass) {
+    if (!list || !catalogItem) return;
+    const targetSub = catalogItem.subIndex !== undefined && catalogItem.subIndex !== null
+      ? String(catalogItem.subIndex)
+      : '';
+    const targetType = catalogItem.type || 'text';
+    const allItems = list.querySelectorAll('.catalog-list-item');
+    allItems.forEach((el) => {
+      const idx = el.getAttribute('data-turn-index');
+      const counter = el.getAttribute('data-turn-counter');
+      const elSub = el.getAttribute('data-sub-index') || '';
+      const elType = el.getAttribute('data-item-type') || '';
+
+      const matchesCounter = (catalogItem.turnCounter !== undefined && counter === String(catalogItem.turnCounter));
+      const matchesIdx = (idx !== null && parseInt(idx, 10) === catalogItem.turnIndex);
+      const matchesTurn = matchesCounter || matchesIdx;
+
+      const matchesType = !elType || elType === targetType;
+      const isExactTarget = matchesTurn && matchesType && elSub === targetSub;
+      const isTurnRoot = matchesTurn && (el.getAttribute('data-is-turn-root') === 'true' || elSub === '');
+
+      if (isExactTarget || isTurnRoot) {
+        el.classList.add('catalog-item-selected');
+      } else {
+        el.classList.remove('catalog-item-selected');
+      }
+
+      if (includeFlightClass && isExactTarget) {
+        el.classList.add('catalog-item-navigating');
+      } else {
+        el.classList.remove('catalog-item-navigating');
+      }
+    });
   }
 
   function getChatMainContainer() {
     return getChatScrollContainer();
   }
 
-  // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation
-  function animateScrollTo(scroller, targetTop, duration, onComplete) {
+  // Hardware-synchronized 60fps/120fps ease-out cubic scroll animation with live target support
+  function animateScrollTo(scroller, targetTopOrGetter, duration, onComplete) {
     if (!scroller) return () => {};
 
-    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    const boundedTarget = Math.max(0, Math.min(maxScroll, Math.round(targetTop)));
-    const startTop = scroller.scrollTop;
-    const distance = boundedTarget - startTop;
+    const resolveTarget = () => {
+      const raw = typeof targetTopOrGetter === 'function' ? targetTopOrGetter() : targetTopOrGetter;
+      const liveMaxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      return Math.max(0, Math.min(liveMaxScroll, raw));
+    };
 
-    if (Math.abs(distance) < 2) {
-      scroller.scrollTop = boundedTarget;
+    const prevScrollBehavior = scroller.style.scrollBehavior;
+    const computedBehavior = window.getComputedStyle ? window.getComputedStyle(scroller).scrollBehavior : '';
+    const shouldOverrideBehavior = computedBehavior === 'smooth' || prevScrollBehavior === 'smooth';
+    if (shouldOverrideBehavior) {
+      scroller.style.scrollBehavior = 'auto';
+    }
+    const restoreScrollBehavior = () => {
+      if (shouldOverrideBehavior) {
+        scroller.style.scrollBehavior = prevScrollBehavior;
+      }
+    };
+
+    const initialTarget = resolveTarget();
+    if (Math.abs(initialTarget - scroller.scrollTop) < 2) {
+      scroller.scrollTop = initialTarget;
+      restoreScrollBehavior();
       if (onComplete) onComplete();
       return () => {};
     }
 
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+    let prevEased = 0;
     const startTime = performance.now();
     let rafId = null;
     let isCanceled = false;
+
+    const cancel = () => {
+      isCanceled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      restoreScrollBehavior();
+    };
 
     const tick = (currentTime) => {
       if (isCanceled) return;
 
       const elapsed = currentTime - startTime;
       const progress = Math.min(1, elapsed / duration);
-      const easedProgress = easeOutCubic(progress);
+      const eased = easeOutCubic(progress);
+      const stepFraction = prevEased >= 1 ? 1 : Math.min(1, (eased - prevEased) / Math.max(1e-6, 1 - prevEased));
+      prevEased = eased;
 
-      scroller.scrollTop = Math.round(startTop + distance * easedProgress);
+      const liveTarget = resolveTarget();
+      const curTop = scroller.scrollTop;
+      const remaining = liveTarget - curTop;
 
       if (progress < 1) {
+        scroller.scrollTop = curTop + remaining * stepFraction;
         rafId = requestAnimationFrame(tick);
       } else {
-        scroller.scrollTop = boundedTarget;
+        scroller.scrollTop = liveTarget;
+        rafId = null;
+        restoreScrollBehavior();
         if (onComplete) onComplete();
       }
     };
 
     rafId = requestAnimationFrame(tick);
-
-    return () => {
-      isCanceled = true;
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-    };
+    return cancel;
   }
 
   function doesElementMatchText(domText, apiText) {
@@ -1604,7 +1842,7 @@
     const totalRounds = roundsSummary.length;
     const totalUserChunks = (catalogData && catalogData[0] && catalogData[0].totalUserChunks) || totalRounds;
     const detected = detectDomLayoutMode(userTurns, roundsSummary, totalUserChunks);
-    const effectiveMode = detected.mode || (catalogData && catalogData[0] && catalogData[0].domLayoutMode) || 'chunk';
+    const effectiveMode = detected.mode || (catalogData && catalogData[0] && catalogData[0].domLayoutMode) || 'round';
     const totalDomTurns = effectiveMode === 'round' ? totalRounds : totalUserChunks;
     const isFullDomPresent = Boolean(detected.mode && detected.totalDomTurns > 0 && userTurns.length === detected.totalDomTurns);
 
@@ -1871,13 +2109,19 @@
     return -1;
   }
 
-  function inferVisibleRoundRange(userTurns, catalogData, ctxOpt) {
+  function inferVisibleRoundRange(userTurns, catalogData, ctxOpt, viewportBoundsOpt) {
     const ctx = ctxOpt || buildDomLookupContext(catalogData, userTurns);
     let minRound = Infinity;
     let maxRound = -Infinity;
     const anchors = [];
 
     for (let i = 0; i < userTurns.length; i++) {
+      if (viewportBoundsOpt) {
+        const rect = userTurns[i].getBoundingClientRect();
+        if (rect.bottom < viewportBoundsOpt.topMin || rect.top > viewportBoundsOpt.topMax) {
+          continue;
+        }
+      }
       const rIdx = inferCatalogRoundIndex(userTurns[i], catalogData, ctx, i);
       if (rIdx !== -1) {
         if (rIdx < minRound) minRound = rIdx;
@@ -1971,13 +2215,55 @@
     const normCompactLen = normCompactA.length;
     const duplicateCount = normCompactLen > 0 ? (ctx.duplicateNormCounts.get(normCompactA) || 1) : 0;
 
+    let cachedAnchors = null;
+    const getVisibleUniqueAnchors = () => {
+      if (cachedAnchors) return cachedAnchors;
+      const anchorsList = [];
+      for (let j = 0; j < userTurns.length; j++) {
+        const tText = ctx.getCachedCleanText(userTurns[j]);
+        const aRoundIdx = inferUniqueTextRoundIndex(tText, ctx);
+        if (aRoundIdx === -1) continue;
+        const aRound = ctx.roundByIndex.get(aRoundIdx);
+        if (!aRound) continue;
+        const expIdx = effectiveMode === 'round'
+          ? aRoundIdx
+          : ((aRound.chunkStartDomIndex === aRound.chunkEndDomIndex || !aRound.hasAttachments)
+            ? aRound.chunkTextDomIndex
+            : null);
+        if (expIdx !== null && expIdx !== undefined) {
+          anchorsList.push({ domPos: j, expIdx, roundIndex: aRoundIdx });
+        }
+      }
+      cachedAnchors = anchorsList;
+      return anchorsList;
+    };
+
+    const isOrderConsistentWithAnchors = (candPos, candExpIdx) => {
+      const anchorsList = getVisibleUniqueAnchors();
+      for (const a of anchorsList) {
+        if (a.domPos < candPos && a.expIdx >= candExpIdx) return false;
+        if (a.domPos > candPos && a.expIdx <= candExpIdx) return false;
+        if (a.domPos === candPos && a.expIdx !== candExpIdx) return false;
+      }
+      return true;
+    };
+
     const verifyDirectCandidate = (el) => {
       const domPos = userTurns.indexOf(el);
       if (domPos === -1) return false;
+      if (!isOrderConsistentWithAnchors(domPos, effectiveTargetIndex)) {
+        return false;
+      }
       const tText = ctx.getCachedCleanText(el);
       if (pureText && doesElementMatchText(tText, pureText)) {
         if (effectiveMode === 'chunk' && effectiveTargetIndex !== effectiveTextIndex) {
           return false;
+        }
+        if (duplicateCount > 1) {
+          const sc = scoreCandidateContext(domPos, effectiveTextIndex, ctx);
+          if (sc.checkedNeighbors > 0 && sc.conflicts > 0 && sc.matches === 0) {
+            return false;
+          }
         }
         return true;
       }
@@ -2016,17 +2302,11 @@
       }
     }
 
-    // Tier 1.5: Recorded element ID lookup (only when targeting start of round or matching attachment directly)
-    const idPointsToTargetChunk = effectiveMode === 'round' ||
-      catalogItem.chunkTargetDomIndex === undefined ||
-      catalogItem.chunkStartDomIndex === undefined ||
-      catalogItem.chunkTargetDomIndex === catalogItem.chunkStartDomIndex;
+    // Tier 1.5: Recorded element ID lookup (verified directly against the item's expected chunk or attachment)
     if (catalogItem.turnElementId) {
       const idEl = document.getElementById(catalogItem.turnElementId);
-      if (idEl && (idPointsToTargetChunk || (realFileName && matchAttachmentInTurn(idEl, realFileName)))) {
-        if (verifyDirectCandidate(idEl)) {
-          return idEl;
-        }
+      if (idEl && verifyDirectCandidate(idEl)) {
+        return idEl;
       }
     }
 
@@ -2041,6 +2321,9 @@
 
       const validAttCandidates = [];
       for (const pos of attCandidates) {
+        if (!isOrderConsistentWithAnchors(pos, effectiveTargetIndex)) {
+          continue;
+        }
         const el = userTurns[pos];
         if (effectiveMode === 'round' && pureText) {
           const tText = ctx.getCachedCleanText(el);
@@ -2090,9 +2373,11 @@
 
       const pickWinningTextPosition = (candidates, requireStrictGuard) => {
         if (candidates.length === 0) return -1;
+        const consistentCandidates = candidates.filter(cand => isOrderConsistentWithAnchors(cand.pos, effectiveTextIndex));
+        if (consistentCandidates.length === 0) return -1;
         const isUniqueLong = !requireStrictGuard && normCompactLen >= 6 && duplicateCount <= 1;
 
-        const scored = candidates.map((cand) => {
+        const scored = consistentCandidates.map((cand) => {
           const sc = scoreCandidateContext(cand.pos, effectiveTextIndex, ctx);
           return { pos: cand.pos, similarity: cand.similarity, sc };
         });
@@ -2106,10 +2391,8 @@
 
         const winner = scored[0];
         if (isUniqueLong && scored.length === 1) {
-          if (winner.sc.conflicts === 0 || winner.sc.matches > 0 || winner.sc.conflicts <= 1) {
-            return winner.pos;
-          }
-          return -1;
+          // Unique strict exact match should not be discarded just because adjacent turns are still hydrating
+          return winner.pos;
         }
 
         if (requireStrictGuard) {
@@ -2151,22 +2434,7 @@
     }
 
     // Tier 3.5: Neighbor-anchor offset projection for unnamed/attachment-only rounds inside the visible window
-    const anchors = [];
-    for (let j = 0; j < userTurns.length; j++) {
-      const tText = ctx.getCachedCleanText(userTurns[j]);
-      const aRoundIdx = inferUniqueTextRoundIndex(tText, ctx);
-      if (aRoundIdx === -1) continue;
-      const aRound = ctx.roundByIndex.get(aRoundIdx);
-      if (!aRound) continue;
-      const expIdx = effectiveMode === 'round'
-        ? aRoundIdx
-        : ((aRound.chunkStartDomIndex === aRound.chunkEndDomIndex || !aRound.hasAttachments)
-          ? aRound.chunkTextDomIndex
-          : null);
-      if (expIdx !== null && expIdx !== undefined) {
-        anchors.push({ domPos: j, expIdx, roundIndex: aRoundIdx });
-      }
-    }
+    const anchors = getVisibleUniqueAnchors();
 
     if (anchors.length > 0) {
       // First check if two anchors strictly bracket effectiveTargetIndex with contiguous spacing
@@ -2265,48 +2533,32 @@
         searchSettleTimer = null;
       }
 
+      const myToken = ++navigationToken;
       isNavigating = true;
+      activeNavState = { catalogItem };
       const clickTime = performance.now();
       const minFeedbackDurationMs = 380; // Ensure visible feedback even for short distances
+
+      // Temporarily override CSS smooth scrolling so rAF closed-loop steps apply immediately
+      const prevScrollBehavior = scroller.style.scrollBehavior;
+      const computedScrollBehavior = window.getComputedStyle ? window.getComputedStyle(scroller).scrollBehavior : '';
+      const didOverrideScrollBehavior = computedScrollBehavior === 'smooth' || prevScrollBehavior === 'smooth';
+      if (didOverrideScrollBehavior) {
+        scroller.style.scrollBehavior = 'auto';
+      }
 
       // 2. Update active highlight in the sidebar list immediately
       const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
       if (list) {
-        const allItems = list.querySelectorAll('.catalog-list-item');
-        allItems.forEach((el) => {
-          const idx = el.getAttribute('data-turn-index');
-          const counter = el.getAttribute('data-turn-counter');
-          const elSub = el.getAttribute('data-sub-index') || '';
-          const targetSub = catalogItem.subIndex !== undefined && catalogItem.subIndex !== null ? String(catalogItem.subIndex) : '';
-
-          const matchesCounter = (catalogItem.turnCounter !== undefined && counter === String(catalogItem.turnCounter));
-          const matchesIdx = (idx !== null && parseInt(idx, 10) === catalogItem.turnIndex);
-          const matchesTurn = matchesCounter || matchesIdx;
-
-          const isExactTarget = matchesTurn && elSub === targetSub;
-          const isTurnRoot = matchesTurn && (el.getAttribute('data-is-turn-root') === 'true' || elSub === '');
-
-          // Active state: target item and its turn root badge are active
-          if (isExactTarget || isTurnRoot) {
-            el.classList.add('catalog-item-selected');
-          } else {
-            el.classList.remove('catalog-item-selected');
-          }
-
-          // Navigating flight background: ONLY the exact clicked row
-          if (isExactTarget) {
-            el.classList.add('catalog-item-navigating');
-          } else {
-            el.classList.remove('catalog-item-navigating');
-          }
-        });
+        applyNavSelectionHighlight(list, catalogItem, true);
       }
 
       // Helper to fade away temporary navigation row background after minimum feedback time
       const clearNavigatingState = (immediate = false) => {
         const doClear = () => {
-          if (list) {
-            const navItems = list.querySelectorAll('.catalog-list-item.catalog-item-navigating');
+          const curList = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
+          if (curList) {
+            const navItems = curList.querySelectorAll('.catalog-list-item.catalog-item-navigating');
             navItems.forEach((el) => el.classList.remove('catalog-item-navigating'));
           }
           navigationClearTimer = null;
@@ -2323,22 +2575,54 @@
           const elapsed = performance.now() - clickTime;
           const remaining = Math.max(0, minFeedbackDurationMs - elapsed);
           if (remaining > 0) {
-            navigationClearTimer = setTimeout(doClear, remaining);
+            navigationClearTimer = setTimeout(() => {
+              if (myToken === navigationToken) {
+                doClear();
+              } else {
+                navigationClearTimer = null;
+              }
+            }, remaining);
           } else {
             doClear();
           }
         }
       };
 
-      // 3. User interrupt handler: abort auto-navigation on manual interaction
+      // 3. User interrupt handler: abort auto-navigation on manual scroll interaction
+      const scrollInterruptKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Escape']);
       const onUserInterrupt = (e) => {
+        if (myToken !== navigationToken || !isNavigating) return;
         if (e.target && e.target.closest && e.target.closest('#' + Utils.SELECTORS.id.catalogPanel)) {
           return;
+        }
+        if (e.type === 'pointerdown' && !(e.target === scroller && e.offsetX >= scroller.clientWidth)) {
+          return;
+        }
+        if (e.type === 'keydown') {
+          const active = document.activeElement;
+          if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)) {
+            if (e.key !== 'Escape') return;
+          }
+          if (!scrollInterruptKeys.has(e.key)) {
+            return;
+          }
         }
         cleanup(true);
       };
 
+      const scheduleSafetyTimeout = (delayMs) => {
+        if (navigationSafetyTimer) {
+          clearTimeout(navigationSafetyTimer);
+        }
+        navigationSafetyTimer = setTimeout(() => {
+          if (myToken === navigationToken && isNavigating) {
+            cleanup(false);
+          }
+        }, delayMs);
+      };
+
       cleanup = (immediate = false) => {
+        if (myToken !== navigationToken) return;
         if (navigationSafetyTimer) {
           clearTimeout(navigationSafetyTimer);
           navigationSafetyTimer = null;
@@ -2352,173 +2636,842 @@
           activeNavigationCancel();
           activeNavigationCancel = null;
         }
+        if (didOverrideScrollBehavior) {
+          scroller.style.scrollBehavior = prevScrollBehavior;
+        }
         activeNavigationAbort = null;
         isNavigating = false;
+        if (immediate) {
+          activeNavState = null;
+          lastNavigationEndAt = 0;
+        } else {
+          activeNavState = {
+            catalogItem,
+            landedScrollTop: scroller.scrollTop
+          };
+          lastNavigationEndAt = performance.now();
+        }
         window.removeEventListener('wheel', onUserInterrupt, { capture: true });
         window.removeEventListener('touchstart', onUserInterrupt, { capture: true });
+        window.removeEventListener('pointerdown', onUserInterrupt, { capture: true });
         window.removeEventListener('keydown', onUserInterrupt, { capture: true });
       };
       activeNavigationAbort = cleanup;
 
-      // Global safety timer: covers multi-hop virtual search + smooth scroll + landing stabilization
-      navigationSafetyTimer = setTimeout(() => {
-        if (isNavigating) {
-          cleanup(false);
-        }
-      }, 2600);
+      // Global safety timer: covers multi-hop virtual/lazy search; extended upon entering landOnTarget
+      scheduleSafetyTimeout(8000);
 
       window.addEventListener('wheel', onUserInterrupt, { capture: true, passive: true });
       window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
+      window.addEventListener('pointerdown', onUserInterrupt, { capture: true, passive: true });
       window.addEventListener('keydown', onUserInterrupt, { capture: true, passive: true });
 
-      // Resolve sub-element within card for image or file attachments
+      const isElementVisibleInLayout = (el) => {
+        if (!el || typeof window.getComputedStyle !== 'function') return true;
+        const st = window.getComputedStyle(el);
+        return st.display !== 'none' && st.visibility !== 'hidden';
+      };
+
+      const determineLayoutMode = (cardEl) => {
+        const stamped = cardEl && cardEl.getAttribute ? cardEl.getAttribute('data-enhancer-dom-mode') : '';
+        if (stamped === 'round' || stamped === 'chunk') {
+          return { mode: stamped, certain: true };
+        }
+        const liveCatalog = State.getCatalogData() || catalogData;
+        const ctx = buildDomLookupContext(liveCatalog);
+        return { mode: ctx.effectiveMode, certain: Boolean(ctx.detectedMode) };
+      };
+
+      const resolveLocalChunkOrRoundIndex = (els, item, cardEl) => {
+        const liveCatalog = State.getCatalogData() || catalogData;
+        const sameRoundItems = liveCatalog.filter(x => x.roundIndex === item.roundIndex && x.type === item.type);
+        const sameChunkItems = item.chunkTargetDomIndex !== undefined
+          ? sameRoundItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex)
+          : sameRoundItems;
+
+        const matchItem = (x) => (
+          x === item ||
+          (x.turnIndex === item.turnIndex &&
+           x.subIndex === item.subIndex &&
+           (!item.fileName || x.fileName === item.fileName))
+        );
+
+        const roundPos = Math.max(0, sameRoundItems.findIndex(matchItem));
+        const chunkPos = Math.max(0, sameChunkItems.findIndex(matchItem));
+        const fallbackRoundIdx = item.type === 'video'
+          ? roundPos
+          : (item.subIndex !== undefined ? item.subIndex : roundPos);
+
+        const modeInfo = determineLayoutMode(cardEl);
+        if (modeInfo.mode === 'round') {
+          return fallbackRoundIdx;
+        }
+        // If mode fell back without full certainty, detect full-round card by element count
+        if (!modeInfo.certain && sameRoundItems.length > sameChunkItems.length && els.length >= sameRoundItems.length) {
+          return fallbackRoundIdx;
+        }
+        return chunkPos;
+      };
+
+      // Resolve sub-element within card for image, file, or video attachments
       const resolveSubTarget = (cardEl, item) => {
         if (!cardEl || !item) return cardEl;
         if (item.type === 'image') {
           const contentImgs = getTurnContentImages(cardEl);
-          const visibleImgs = contentImgs.filter((img) => {
-            const r = img.getBoundingClientRect();
-            return r.width > 0 || r.height > 0;
-          });
-          const imgs = visibleImgs.length > 0 ? visibleImgs : contentImgs;
+          const layoutImgs = contentImgs.filter(isElementVisibleInLayout);
+          const imgs = layoutImgs.length > 0 ? layoutImgs : contentImgs;
           if (imgs.length > 0) {
             if (item.fileName && !item.isDefaultName) {
               const targetLower = item.fileName.trim().toLowerCase();
-              const byName = imgs.find((img) => {
+              const exactMatch = imgs.find((img) => {
                 const alt = (img.alt || '').trim().toLowerCase();
                 const title = (img.title || '').trim().toLowerCase();
-                return (alt && (alt === targetLower || alt.includes(targetLower) || targetLower.includes(alt))) ||
-                       (title && (title === targetLower || title.includes(targetLower))) ||
-                       (img.src && !img.src.startsWith('data:') && img.src.toLowerCase().includes(targetLower));
+                return alt === targetLower || title === targetLower;
               });
-              if (byName) return byName;
+              if (exactMatch) return exactMatch;
+
+              const looseMatch = imgs.find((img) => {
+                const alt = (img.alt || '').trim().toLowerCase();
+                const title = (img.title || '').trim().toLowerCase();
+                return (alt && (alt.includes(targetLower) || (alt.length >= 4 && targetLower.includes(alt)))) ||
+                       (title && (title.includes(targetLower) || (title.length >= 4 && targetLower.includes(title)))) ||
+                       (img.src && !img.src.startsWith('data:') && targetLower.length >= 4 && img.src.toLowerCase().includes(targetLower));
+              });
+              if (looseMatch) return looseMatch;
             }
-            const idx = item.subIndex || 0;
-            if (item.chunkTargetDomIndex !== undefined && item.chunkStartDomIndex !== undefined && item.chunkTargetDomIndex > item.chunkStartDomIndex) {
-              const liveTurns = getUserTurnElements();
-              const pos = liveTurns.indexOf(cardEl);
-              if (pos !== -1) {
-                let precedingImgs = 0;
-                const maxBack = Math.min(pos, item.chunkTargetDomIndex - item.chunkStartDomIndex);
-                for (let k = 1; k <= maxBack; k++) {
-                  precedingImgs += getTurnContentImages(liveTurns[pos - k]).length;
-                }
-                const localIdx = Math.max(0, idx - precedingImgs);
-                if (imgs[localIdx]) return imgs[localIdx];
-              }
-            }
+            const idx = resolveLocalChunkOrRoundIndex(imgs, item, cardEl);
             return imgs[idx] || imgs[imgs.length - 1] || cardEl;
           }
         } else if (item.type === 'file') {
           const allFileEls = getTurnContentFiles(cardEl);
-          const visibleFiles = allFileEls.filter((el) => {
-            const r = el.getBoundingClientRect();
-            return r.width > 0 || r.height > 0;
-          });
-          const fileEls = visibleFiles.length > 0 ? visibleFiles : allFileEls;
+          const layoutFiles = allFileEls.filter(isElementVisibleInLayout);
+          const fileEls = layoutFiles.length > 0 ? layoutFiles : allFileEls;
           if (fileEls.length > 0) {
             if (item.fileName && !item.isDefaultName) {
               const matchedChip = fileEls.find((el) => doesFileElementMatchName(el, item.fileName));
               if (matchedChip) return matchedChip;
             }
-            const idx = item.subIndex || 0;
-            if (item.chunkTargetDomIndex !== undefined && item.chunkStartDomIndex !== undefined && item.chunkTargetDomIndex > item.chunkStartDomIndex) {
-              const liveTurns = getUserTurnElements();
-              const pos = liveTurns.indexOf(cardEl);
-              if (pos !== -1) {
-                let precedingFiles = 0;
-                const maxBack = Math.min(pos, item.chunkTargetDomIndex - item.chunkStartDomIndex);
-                for (let k = 1; k <= maxBack; k++) {
-                  precedingFiles += getTurnContentFiles(liveTurns[pos - k]).length;
-                }
-                const localIdx = Math.max(0, idx - precedingFiles);
-                if (fileEls[localIdx]) return fileEls[localIdx];
-              }
-            }
+            const idx = resolveLocalChunkOrRoundIndex(fileEls, item, cardEl);
             return fileEls[idx] || fileEls[fileEls.length - 1] || cardEl;
+          }
+        } else if (item.type === 'video') {
+          const allVideoEls = getTurnContentVideos(cardEl);
+          const layoutVideos = allVideoEls.filter(isElementVisibleInLayout);
+          const videoEls = layoutVideos.length > 0 ? layoutVideos : allVideoEls;
+          if (videoEls.length > 0) {
+            const idx = resolveLocalChunkOrRoundIndex(videoEls, item, cardEl);
+            return videoEls[idx] || videoEls[videoEls.length - 1] || cardEl;
           }
         }
         return cardEl;
       };
 
-      // Precision landing helper when target DOM element is available
-      const landOnTarget = (targetEl) => {
-        if (!targetEl || !targetEl.isConnected) {
-          cleanup(false);
-          return;
+      const isTrackedCardValid = (card) => {
+        if (!card || !card.isConnected) return false;
+        const pure = (catalogItem.pureText || '').trim();
+        const normA = compactTextForMatch(normalizeTextForMatch(pure));
+        if (normA.length >= 6) {
+          const stampedMode = card.getAttribute ? card.getAttribute('data-enhancer-dom-mode') : '';
+          const canCheckText =
+            catalogItem.type === 'text' ||
+            stampedMode === 'round' ||
+            catalogItem.chunkTargetDomIndex === undefined ||
+            catalogItem.chunkTextDomIndex === undefined ||
+            catalogItem.chunkTargetDomIndex === catalogItem.chunkTextDomIndex;
+          if (canCheckText) {
+            const curText = getCleanPromptText(card);
+            const curComp = compactTextForMatch(normalizeTextForMatch(curText));
+            if (curComp.length >= 6 && !doesElementMatchText(curText, pure)) {
+              return false;
+            }
+          }
         }
+        return true;
+      };
 
-        const subTarget = resolveSubTarget(targetEl, catalogItem);
-        const targetRect = subTarget.getBoundingClientRect();
-        const scrollerRect = getScrollerViewportMetrics(scroller);
-        const isAttachment = catalogItem.type === 'image' || catalogItem.type === 'file';
-        const desiredTop = isAttachment
-          ? Math.max(80, Math.round((scrollerRect.height - targetRect.height) / 2))
-          : 80;
+      // Two-stage Plan A motion constants: instant approach teleport + short crisp deceleration glide
+      // Avoids slow visible dragging across lazy-rendered blank placeholder turns even for short hops.
+      const TELEPORT_DISTANCE_THRESHOLD = 520;
+      const getApproachDistance = (viewportHeight) => {
+        return Math.min(340, Math.max(180, Math.round((viewportHeight || 800) * 0.42)));
+      };
+      const computeCrispGlideDuration = (dist) => {
+        return Math.min(210, Math.max(95, Math.round(80 + Math.sqrt(Math.max(0, dist)) * 4.5)));
+      };
 
-        const delta = (targetRect.top - scrollerRect.top) - desiredTop;
-        const targetScrollTop = scroller.scrollTop + delta;
-        const totalDistance = Math.abs(delta);
+      // Shared search budget across initial hydration search and any mid-flight virtual-scroll re-acquisition
+      const maxSearchHops = 22;
+      let searchHopsUsed = 0;
+      const targetRound = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
+      const totalRounds = catalogItem.totalRounds || new Set(catalogData.map(i => i.roundIndex)).size || 1;
+      let lowBound = { round: 0, scrollTop: 0 };
+      let highBound = {
+        round: Math.max(0, totalRounds - 1),
+        scrollTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      };
+      let lastSearchDir = 1;
+      let lastHopScrollHeight = scroller.scrollHeight;
+      let sawBottomMiss = false;
+      let sawTopMiss = false;
+      let emptyGapConsecutive = 0;
 
-        // Landing Stabilization Anchor: dynamically pins the target to desiredTop
-        // for up to 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
-        const anchorLand = () => {
-          if (!isNavigating) return;
-          const anchorStartTime = performance.now();
-          const anchorWindowMs = 350;
-          let stableFrames = 0;
-          let anchorRafId = null;
+      let runSearchHop = null;
 
-          const anchorTick = () => {
-            if (!isNavigating) return;
+      // Landing Stabilization Anchor: dynamically pins the target to live desiredTop
+      // for at least 380ms (longer for lazy expansions / pending images), ensuring pixel-exact stop.
+      const anchorLand = (anchorCard) => {
+        if (!isNavigating || myToken !== navigationToken) return;
+        let cardEl = anchorCard;
+        const anchorStartTime = performance.now();
+        const anchorMinMs = 380;
+        const baseAnchorMaxMs = 1350;
+        const requiredStableFrames = 5;
+        let stableFrames = 0;
+        let lastAbsDelta = Infinity;
+        let prevDeltaSign = 0;
+        let anchorApproachTeleports = 0;
+        const maxAnchorTeleports = 8;
+        let anchorRafId = null;
+        let anchorCanceled = false;
 
-            const freshCard = targetEl.isConnected ? targetEl : findTargetElement(catalogItem);
-            if (!freshCard || !freshCard.isConnected) {
-              cleanup(false);
+        activeNavigationCancel = () => {
+          anchorCanceled = true;
+          if (anchorRafId !== null) {
+            cancelAnimationFrame(anchorRafId);
+            anchorRafId = null;
+          }
+        };
+
+        const anchorTick = () => {
+          if (anchorCanceled || !isNavigating || myToken !== navigationToken) return;
+
+          if (!isTrackedCardValid(cardEl)) {
+            cardEl = findTargetElement(catalogItem);
+            if (!cardEl || !cardEl.isConnected) {
+              if (searchHopsUsed < maxSearchHops && runSearchHop) {
+                runSearchHop(searchHopsUsed + 1);
+              } else {
+                cleanup(false);
+              }
               return;
             }
-            const freshTarget = resolveSubTarget(freshCard, catalogItem);
-            const freshRect = freshTarget.getBoundingClientRect();
-            const currentScrollerRect = getScrollerViewportMetrics(scroller);
-            const settleDelta = Math.round((freshRect.top - currentScrollerRect.top) - desiredTop);
+            stableFrames = 0;
+          }
 
-            if (Math.abs(settleDelta) > 2) {
-              const prevScroll = scroller.scrollTop;
-              scroller.scrollTop += settleDelta;
-              // If scroll did not move (hit scroll boundary top or bottom), treat as stable
-              if (scroller.scrollTop === prevScroll) {
+          const freshTarget = resolveSubTarget(cardEl, catalogItem);
+          const freshRect = freshTarget.getBoundingClientRect();
+          const currentScrollerRect = getScrollerViewportMetrics(scroller);
+          const liveDesiredTop = computeDesiredTop(freshRect, currentScrollerRect, catalogItem);
+
+          const curTop = scroller.scrollTop;
+          const liveMaxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          const rawTargetTop = curTop + ((freshRect.top - currentScrollerRect.top) - liveDesiredTop);
+          const clampedTargetTop = Math.max(0, Math.min(liveMaxScroll, rawTargetTop));
+          const boundedDelta = clampedTargetTop - curTop;
+          const absDelta = Math.abs(boundedDelta);
+          const curSign = boundedDelta > 0 ? 1 : (boundedDelta < 0 ? -1 : 0);
+
+          const isPendingImage = Boolean(freshTarget && freshTarget.tagName === 'IMG' && !freshTarget.complete);
+
+          if (absDelta > TELEPORT_DISTANCE_THRESHOLD && anchorApproachTeleports < maxAnchorTeleports) {
+            // Large lazy turn expansion pushed the target offscreen again: re-teleport to doorstep cleanly
+            const approachDist = Math.min(280, Math.max(150, Math.round(currentScrollerRect.height * 0.35)));
+            const jumpTop = Math.max(0, Math.min(liveMaxScroll, clampedTargetTop - curSign * approachDist));
+            if (Math.abs(jumpTop - curTop) > 40) {
+              scroller.scrollTop = jumpTop;
+              anchorApproachTeleports++;
+              stableFrames = 0;
+              scheduleSafetyTimeout(2400);
+              lastAbsDelta = absDelta;
+              prevDeltaSign = curSign;
+              anchorRafId = requestAnimationFrame(anchorTick);
+              return;
+            }
+          }
+
+          if (absDelta > 1.0) {
+            // Guard against sub-pixel DPR/zoom quantization oscillation near 1-2px
+            const isSmallOscillation = absDelta <= 2.5 && prevDeltaSign !== 0 && curSign !== prevDeltaSign && absDelta >= lastAbsDelta * 0.9;
+            if (isSmallOscillation) {
+              stableFrames++;
+            } else {
+              if (absDelta > 8) {
+                const glideStep = Math.sign(boundedDelta) * Math.max(5, Math.min(220, Math.round(absDelta * 0.45)));
+                scroller.scrollTop = Math.max(0, Math.min(liveMaxScroll, curTop + glideStep));
+              } else {
+                scroller.scrollTop = clampedTargetTop;
+              }
+              const moved = Math.abs(scroller.scrollTop - curTop);
+              if (moved < 0.25) {
+                // Reached scroll boundary or browser quantization floor
                 stableFrames++;
               } else {
                 stableFrames = 0;
               }
-            } else {
-              stableFrames++;
             }
+          } else {
+            if (absDelta > 0.5 && stableFrames === 0) {
+              scroller.scrollTop = clampedTargetTop;
+            }
+            stableFrames++;
+          }
 
-            const elapsed = performance.now() - anchorStartTime;
-            if (elapsed < anchorWindowMs && stableFrames < 5) {
-              anchorRafId = requestAnimationFrame(anchorTick);
+          lastAbsDelta = absDelta;
+          if (curSign !== 0) prevDeltaSign = curSign;
+
+          const elapsed = performance.now() - anchorStartTime;
+          const effectiveMaxMs = (isPendingImage || anchorApproachTeleports > 0) ? 1850 : baseAnchorMaxMs;
+          const keepAnchoring = (elapsed < anchorMinMs || stableFrames < requiredStableFrames || isPendingImage) && elapsed < effectiveMaxMs;
+          if (keepAnchoring) {
+            anchorRafId = requestAnimationFrame(anchorTick);
+          } else {
+            // Final precision touch before releasing if a late shift happened right at window edge
+            const finalRect = freshTarget.getBoundingClientRect();
+            const finalMetrics = getScrollerViewportMetrics(scroller);
+            const finalDesiredTop = computeDesiredTop(finalRect, finalMetrics, catalogItem);
+            const finalMaxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+            const finalTargetTop = Math.max(0, Math.min(finalMaxScroll, scroller.scrollTop + ((finalRect.top - finalMetrics.top) - finalDesiredTop)));
+            const finalDiff = Math.abs(finalTargetTop - scroller.scrollTop);
+            if (finalDiff > 0.5) {
+              scroller.scrollTop = finalTargetTop;
+            }
+            anchorRafId = null;
+            cleanup(false);
+          }
+        };
+
+        anchorRafId = requestAnimationFrame(anchorTick);
+      };
+
+      // Two-stage Plan A landing: instant approach teleport past intermediate blank turns + short crisp glide
+      const landOnTarget = (initialEl) => {
+        if (!isNavigating || myToken !== navigationToken) return;
+        scheduleSafetyTimeout(3200);
+        let trackedCard = initialEl;
+        if (!trackedCard || !trackedCard.isConnected) {
+          trackedCard = findTargetElement(catalogItem);
+        }
+        if (!trackedCard || !trackedCard.isConnected) {
+          if (searchHopsUsed < maxSearchHops && runSearchHop) {
+            runSearchHop(searchHopsUsed + 1);
+          } else {
+            cleanup(false);
+          }
+          return;
+        }
+
+        const subTarget0 = resolveSubTarget(trackedCard, catalogItem);
+        const rect0 = subTarget0.getBoundingClientRect();
+        const metrics0 = getScrollerViewportMetrics(scroller);
+        const desiredTop0 = computeDesiredTop(rect0, metrics0, catalogItem);
+        const maxScroll0 = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const targetTop0 = Math.max(0, Math.min(maxScroll0, scroller.scrollTop + ((rect0.top - metrics0.top) - desiredTop0)));
+        const initialBoundedDist = Math.abs(targetTop0 - scroller.scrollTop);
+
+        if (initialBoundedDist <= 1.5) {
+          if (initialBoundedDist > 0.5) {
+            scroller.scrollTop = targetTop0;
+          }
+          anchorLand(trackedCard);
+          return;
+        }
+
+        let flightTeleports = 0;
+        const maxFlightTeleports = 16;
+
+        // Stage 1: Teleport to the approach zone when distance exceeds half-screen threshold
+        if (initialBoundedDist > TELEPORT_DISTANCE_THRESHOLD) {
+          const approachDist = getApproachDistance(metrics0.height);
+          const dirSign = targetTop0 >= scroller.scrollTop ? 1 : -1;
+          const preJumpTop = Math.max(0, Math.min(maxScroll0, targetTop0 - dirSign * approachDist));
+          if (Math.abs(preJumpTop - scroller.scrollTop) > 40) {
+            scroller.scrollTop = preJumpTop;
+            flightTeleports++;
+          }
+          if (!isTrackedCardValid(trackedCard)) {
+            const refound = findTargetElement(catalogItem);
+            if (refound && refound.isConnected) {
+              trackedCard = refound;
+            }
+          }
+        }
+
+        let initialGlideDist = initialBoundedDist;
+        if (isTrackedCardValid(trackedCard)) {
+          const subTarget1 = resolveSubTarget(trackedCard, catalogItem);
+          const rect1 = subTarget1.getBoundingClientRect();
+          const metrics1 = getScrollerViewportMetrics(scroller);
+          const desiredTop1 = computeDesiredTop(rect1, metrics1, catalogItem);
+          const maxScroll1 = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          const targetTop1 = Math.max(0, Math.min(maxScroll1, scroller.scrollTop + ((rect1.top - metrics1.top) - desiredTop1)));
+          initialGlideDist = Math.abs(targetTop1 - scroller.scrollTop);
+          if (initialGlideDist <= 1.5) {
+            if (initialGlideDist > 0.5) {
+              scroller.scrollTop = targetTop1;
+            }
+            anchorLand(trackedCard);
+            return;
+          }
+        }
+
+        let remainingMs = computeCrispGlideDuration(Math.min(TELEPORT_DISTANCE_THRESHOLD, initialGlideDist));
+        let p = 0;
+        let prevTime = performance.now();
+        const flightStartTime = prevTime;
+        let rafId = null;
+        let canceled = false;
+
+        activeNavigationCancel = () => {
+          canceled = true;
+          if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+        };
+
+        const flightTick = (currentTime) => {
+          if (canceled || !isNavigating || myToken !== navigationToken) return;
+
+          const dt = Math.min(48, Math.max(1, currentTime - prevTime));
+          prevTime = currentTime;
+
+          if (!isTrackedCardValid(trackedCard)) {
+            trackedCard = findTargetElement(catalogItem);
+            if (!trackedCard || !trackedCard.isConnected) {
+              rafId = null;
+              if (searchHopsUsed < maxSearchHops && runSearchHop) {
+                runSearchHop(searchHopsUsed + 1);
+              } else {
+                cleanup(false);
+              }
+              return;
+            }
+          }
+
+          const subTarget = resolveSubTarget(trackedCard, catalogItem);
+          const liveRect = subTarget.getBoundingClientRect();
+          const metrics = getScrollerViewportMetrics(scroller);
+          const liveDesiredTop = computeDesiredTop(liveRect, metrics, catalogItem);
+          const curTop = scroller.scrollTop;
+          const liveMaxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          const liveTargetTop = Math.max(0, Math.min(liveMaxScroll, curTop + ((liveRect.top - metrics.top) - liveDesiredTop)));
+          const boundedRemaining = liveTargetTop - curTop;
+          const absRemaining = Math.abs(boundedRemaining);
+
+          // If asynchronous lazy hydration shifts target beyond teleport threshold mid-glide,
+          // re-teleport directly into its new approach zone rather than dragging over blank placeholders.
+          if (absRemaining > TELEPORT_DISTANCE_THRESHOLD && flightTeleports < maxFlightTeleports) {
+            const approachDist = getApproachDistance(metrics.height);
+            const sign = boundedRemaining > 0 ? 1 : -1;
+            const jumpTop = Math.max(0, Math.min(liveMaxScroll, liveTargetTop - sign * approachDist));
+            if (Math.abs(jumpTop - curTop) > 40) {
+              scroller.scrollTop = jumpTop;
+              flightTeleports++;
+              p = 0;
+              remainingMs = computeCrispGlideDuration(Math.min(approachDist, absRemaining));
+              scheduleSafetyTimeout(3200);
+              rafId = requestAnimationFrame(flightTick);
+              return;
+            }
+          }
+
+          // Extend remaining glide slightly when sub-viewport reflow arrives late in flight
+          if (p > 0.65 && absRemaining > 60 && (currentTime - flightStartTime) < 1200) {
+            remainingMs = Math.max(
+              remainingMs,
+              Math.min(240, Math.round(90 + Math.sqrt(absRemaining) * 3.5))
+            );
+          }
+
+          const nextP = remainingMs <= dt ? 1 : (1 - (1 - p) * Math.max(0, 1 - dt / remainingMs));
+          remainingMs = Math.max(0, remainingMs - dt);
+          const prevEased = 1 - Math.pow(1 - p, 3);
+          const nextEased = 1 - Math.pow(1 - nextP, 3);
+          const stepFraction = prevEased >= 1 ? 1 : Math.min(1, (nextEased - prevEased) / Math.max(1e-6, 1 - prevEased));
+          p = nextP;
+
+          if (p < 1) {
+            let step = boundedRemaining * stepFraction;
+            if (p > 0.85 && absRemaining >= 1 && Math.abs(step) > 0 && Math.abs(step) < 1) {
+              step = Math.sign(boundedRemaining);
+            }
+            scroller.scrollTop = Math.max(0, Math.min(liveMaxScroll, curTop + step));
+            rafId = requestAnimationFrame(flightTick);
+          } else {
+            rafId = null;
+            if (absRemaining <= 12) {
+              scroller.scrollTop = liveTargetTop;
+            }
+            // Larger residuals are smoothly converged by anchorLand without abrupt snaps
+            anchorLand(trackedCard);
+          }
+        };
+
+        rafId = requestAnimationFrame(flightTick);
+      };
+
+      // Target not in DOM yet (virtualized / lazy-deferred): instant-jump bracketed search
+      // with adaptive hydration settle so long chats skip blank turns without visual dragging.
+      runSearchHop = (hop) => {
+        if (!isNavigating || myToken !== navigationToken) return;
+        searchHopsUsed = hop;
+
+        const quickFound = findTargetElement(catalogItem);
+        if (quickFound) {
+          landOnTarget(quickFound);
+          return;
+        }
+
+        const curScrollHeight = scroller.scrollHeight;
+        const maxScroll = Math.max(0, curScrollHeight - scroller.clientHeight);
+        const currentTop = scroller.scrollTop;
+
+        if (hop > maxSearchHops || maxScroll <= 0) {
+          cleanup(false);
+          return;
+        }
+
+        // Propagate scrollHeight growth/shrinkage since the previous hop onto [lowBound, highBound]
+        // so tightened intermediate bounds cannot trap search behind newly expanded lazy turns.
+        const dh = curScrollHeight - lastHopScrollHeight;
+        lastHopScrollHeight = curScrollHeight;
+        if (dh > 0) {
+          if (highBound.round === totalRounds - 1) {
+            highBound.scrollTop = Math.max(highBound.scrollTop, maxScroll);
+          } else {
+            highBound.scrollTop = Math.min(maxScroll, highBound.scrollTop + dh);
+          }
+        } else if (dh < 0) {
+          lowBound.scrollTop = Math.max(0, lowBound.scrollTop + dh);
+          if (highBound.round === totalRounds - 1) {
+            highBound.scrollTop = maxScroll;
+          } else {
+            highBound.scrollTop = Math.max(0, Math.min(maxScroll, highBound.scrollTop + dh));
+          }
+        } else if (highBound.round === totalRounds - 1) {
+          highBound.scrollTop = Math.max(highBound.scrollTop, maxScroll);
+        }
+
+        const liveTurns = getUserTurnElements();
+        const metrics = getScrollerViewportMetrics(scroller);
+        const viewBound = {
+          topMin: metrics.top - metrics.height * 1.5,
+          topMax: metrics.top + metrics.height * 2.5
+        };
+        const visRange = inferVisibleRoundRange(liveTurns, catalogData, null, viewBound);
+        const getAnchorDesiredTop = (el) => {
+          const r = el.getBoundingClientRect();
+          return Math.max(0, Math.min(maxScroll, Math.round(currentTop + (r.top - metrics.top) - 80)));
+        };
+
+        let firstA = null;
+        let lastA = null;
+        let firstScroll = 0;
+        let lastScroll = 0;
+        let minNextRoundScroll = 0;
+
+        // Tighten search bracket from live visible round anchors (resilient to upstream resize)
+        if (visRange.anchors.length > 0) {
+          emptyGapConsecutive = 0;
+          firstA = visRange.anchors[0];
+          lastA = visRange.anchors[visRange.anchors.length - 1];
+          firstScroll = getAnchorDesiredTop(liveTurns[firstA.domPos]);
+          lastScroll = getAnchorDesiredTop(liveTurns[lastA.domPos]);
+
+          if (targetRound < firstA.roundIndex && (firstA.roundIndex <= highBound.round || firstScroll < highBound.scrollTop)) {
+            if (firstScroll >= lowBound.scrollTop) {
+              highBound = { round: firstA.roundIndex, scrollTop: firstScroll };
+            }
+          } else if (targetRound > lastA.roundIndex) {
+            // Project lower bound past the bottom of lastA and any trailing model turns in that round
+            let floorEl = liveTurns[lastA.domPos];
+            const allTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
+            const idxInAll = allTurns.indexOf(floorEl);
+            if (idxInAll !== -1) {
+              for (let k = idxInAll + 1; k < allTurns.length; k++) {
+                const nextCont = allTurns[k].querySelector(Utils.SELECTORS.query.chatTurnContainer);
+                if (nextCont && nextCont.classList.contains(Utils.SELECTORS.class.userTurn)) {
+                  break;
+                }
+                floorEl = allTurns[k];
+              }
+            }
+            const floorRect = floorEl.getBoundingClientRect();
+            minNextRoundScroll = Math.max(
+              lastScroll,
+              Math.min(maxScroll, Math.round(currentTop + (floorRect.bottom - metrics.top) - 140))
+            );
+            const nextMinRound = Math.min(totalRounds - 1, lastA.roundIndex + 1);
+            if (minNextRoundScroll <= highBound.scrollTop &&
+                ((nextMinRound >= lowBound.round && (nextMinRound > lowBound.round || minNextRoundScroll > lowBound.scrollTop)) ||
+                 minNextRoundScroll > lowBound.scrollTop)) {
+              lowBound = { round: nextMinRound, scrollTop: minNextRoundScroll };
+            } else if ((lastA.roundIndex >= lowBound.round || lastScroll > lowBound.scrollTop) && lastScroll <= highBound.scrollTop) {
+              lowBound = { round: lastA.roundIndex, scrollTop: lastScroll };
+            }
+          }
+        }
+
+        // Reset collided bounds while retaining the current frame's live observation
+        if (lowBound.round >= highBound.round || lowBound.scrollTop > highBound.scrollTop) {
+          lowBound = (lastA && targetRound > lastA.roundIndex)
+            ? { round: Math.min(totalRounds - 1, lastA.roundIndex + 1), scrollTop: Math.min(maxScroll, minNextRoundScroll || lastScroll) }
+            : { round: 0, scrollTop: 0 };
+          highBound = (firstA && targetRound < firstA.roundIndex && firstScroll >= lowBound.scrollTop)
+            ? { round: firstA.roundIndex, scrollTop: firstScroll }
+            : { round: Math.max(0, totalRounds - 1), scrollTop: maxScroll };
+          if (lowBound.round >= highBound.round || lowBound.scrollTop > highBound.scrollTop) {
+            lowBound = { round: 0, scrollTop: 0 };
+            highBound = { round: Math.max(0, totalRounds - 1), scrollTop: maxScroll };
+          }
+        }
+
+        let searchTarget;
+        if (targetRound === 0) {
+          if (hop > 1 && currentTop <= 5 && visRange.anchors.length === 0) {
+            sawTopMiss = true;
+          }
+          if (sawTopMiss) {
+            searchTarget = currentTop + Math.max(400, Math.round(metrics.height * 0.9));
+            lastSearchDir = 1;
+          } else {
+            searchTarget = 0;
+            lastSearchDir = -1;
+          }
+        } else if (targetRound >= totalRounds - 1 && !sawBottomMiss) {
+          if (hop > 1 && currentTop >= maxScroll - 20 && visRange.anchors.length === 0) {
+            sawBottomMiss = true;
+            lastSearchDir = -1;
+            searchTarget = currentTop - Math.max(520, Math.round(metrics.height * 0.95));
+          } else {
+            searchTarget = maxScroll;
+            lastSearchDir = 1;
+          }
+        } else if (targetRound >= totalRounds - 1 && sawBottomMiss && visRange.anchors.length === 0) {
+          lastSearchDir = -1;
+          searchTarget = currentTop - Math.max(520, Math.round(metrics.height * 0.95));
+        } else if (visRange.minRound !== -1 && targetRound >= visRange.minRound && targetRound <= visRange.maxRound) {
+          // Target round is inside visible span: interpolate between bracketing anchors or nudge chunk offset
+          let leftA = null;
+          let rightA = null;
+          for (const a of visRange.anchors) {
+            if (a.roundIndex <= targetRound) leftA = a;
+            if (!rightA && a.roundIndex >= targetRound) rightA = a;
+          }
+          if (leftA && leftA.roundIndex === targetRound) {
+            const baseTop = getAnchorDesiredTop(liveTurns[leftA.domPos]);
+            const ctxMode = buildDomLookupContext(catalogData, liveTurns).effectiveMode;
+            const chunkDiff = (ctxMode === 'chunk' && catalogItem.chunkTargetDomIndex !== undefined && catalogItem.chunkTextDomIndex !== undefined)
+              ? (catalogItem.chunkTargetDomIndex - catalogItem.chunkTextDomIndex)
+              : 0;
+            const stepUnit = Math.round(metrics.height * 0.65);
+            if (chunkDiff < 0) {
+              searchTarget = Math.min(currentTop - stepUnit, baseTop + chunkDiff * 240);
+            } else if (chunkDiff > 0) {
+              searchTarget = Math.max(currentTop + stepUnit, baseTop + chunkDiff * 240);
+            } else if (Math.abs(baseTop - currentTop) >= 12) {
+              searchTarget = baseTop;
+            } else {
+              searchTarget = currentTop + lastSearchDir * Math.round(metrics.height * 0.45);
+            }
+          } else if (leftA && rightA && rightA.roundIndex > leftA.roundIndex) {
+            const leftTop = getAnchorDesiredTop(liveTurns[leftA.domPos]);
+            const rightTop = getAnchorDesiredTop(liveTurns[rightA.domPos]);
+            const frac = (targetRound - leftA.roundIndex) / (rightA.roundIndex - leftA.roundIndex);
+            searchTarget = Math.round(leftTop + (rightTop - leftTop) * frac);
+          } else {
+            const isBefore = catalogItem.chunkTargetDomIndex !== undefined &&
+              catalogItem.chunkTextDomIndex !== undefined &&
+              catalogItem.chunkTargetDomIndex < catalogItem.chunkTextDomIndex;
+            const stepUnit = Math.max(400, Math.round(metrics.height * 0.75));
+            searchTarget = currentTop + (isBefore ? -stepUnit : stepUnit);
+          }
+        } else if (visRange.anchors.length === 0 && hop > 1) {
+          // Landed inside an unhydrated gap or giant model reply with zero user anchors in view:
+          // first check if mounted model turns expose a direct edge past the gap, otherwise march monotonically.
+          emptyGapConsecutive++;
+          const dir = lastSearchDir || 1;
+          const nearAllTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn)).filter((t) => {
+            const r = t.getBoundingClientRect();
+            return r.bottom >= viewBound.topMin && r.top <= viewBound.topMax;
+          });
+          let jumpedTurnEdge = null;
+          if (nearAllTurns.length > 0) {
+            if (dir > 0) {
+              let maxBottom = -Infinity;
+              for (const t of nearAllTurns) {
+                const r = t.getBoundingClientRect();
+                if (r.bottom > maxBottom) maxBottom = r.bottom;
+              }
+              const edgeTop = Math.min(maxScroll, Math.round(currentTop + (maxBottom - metrics.top) - 80));
+              if (edgeTop > currentTop + 200) jumpedTurnEdge = edgeTop;
+            } else {
+              let minTop = Infinity;
+              for (const t of nearAllTurns) {
+                const r = t.getBoundingClientRect();
+                if (r.top < minTop) minTop = r.top;
+              }
+              const edgeTop = Math.max(0, Math.round(currentTop + (minTop - metrics.top) - Math.round(metrics.height * 0.75)));
+              if (edgeTop < currentTop - 200) jumpedTurnEdge = edgeTop;
+            }
+          }
+          if (jumpedTurnEdge !== null) {
+            searchTarget = jumpedTurnEdge;
+          } else {
+            const stride = Math.round(metrics.height * 0.95) * Math.min(3, Math.max(1, emptyGapConsecutive));
+            let nextGapTop = currentTop + dir * stride;
+            if (dir > 0 && currentTop >= maxScroll - 8) {
+              lastSearchDir = -1;
+              nextGapTop = currentTop - Math.round(metrics.height * 0.95);
+            } else if (dir < 0 && currentTop <= 8) {
+              lastSearchDir = 1;
+              nextGapTop = currentTop + Math.round(metrics.height * 0.95);
+            }
+            searchTarget = nextGapTop;
+          }
+        } else {
+          // Interpolate strictly inside [lowBound, highBound] with step-size safeguards
+          const rSpan = Math.max(1, highBound.round - lowBound.round);
+          const frac = Math.max(0, Math.min(1, (targetRound - lowBound.round) / rSpan));
+          let est = Math.round(lowBound.scrollTop + (highBound.scrollTop - lowBound.scrollTop) * frac);
+
+          const roundGap = visRange.minRound !== -1
+            ? (targetRound < visRange.minRound ? (visRange.minRound - targetRound) : (targetRound - visRange.maxRound))
+            : Infinity;
+          let dir;
+          if (visRange.minRound !== -1) {
+            dir = targetRound < visRange.minRound ? -1 : 1;
+          } else if (Math.abs(est - currentTop) >= 5) {
+            dir = est >= currentTop ? 1 : -1;
+          } else {
+            dir = lastSearchDir;
+          }
+          lastSearchDir = dir;
+
+          // Avoid large overshoot jumps when within 1-2 rounds of visible turns
+          if (roundGap <= 2 && Math.abs(est - currentTop) > metrics.height * 2.5) {
+            est = currentTop + dir * Math.round(metrics.height * 1.4);
+          }
+
+          const minStep = Math.max(220, Math.round(metrics.height * 0.65));
+          if (dir < 0 && est > currentTop - minStep) {
+            est = Math.max(lowBound.scrollTop, currentTop - minStep);
+          } else if (dir > 0 && est < currentTop + minStep) {
+            est = Math.min(highBound.scrollTop, currentTop + minStep);
+          }
+          searchTarget = est;
+        }
+
+        searchTarget = Math.max(0, Math.min(maxScroll, Math.round(searchTarget)));
+
+        // Avoid zero-movement stall unless boundaries themselves prevent movement
+        if (Math.abs(searchTarget - currentTop) < 5 && hop > 1) {
+          const nudgeDir = (visRange.maxRound !== -1 && targetRound > visRange.maxRound) ? 1
+            : ((visRange.minRound !== -1 && targetRound < visRange.minRound) ? -1 : (lastSearchDir || 1));
+          const nudgeDist = Math.max(320, Math.round(metrics.height * 0.7));
+          const nudged = Math.max(0, Math.min(maxScroll, currentTop + nudgeDir * nudgeDist));
+          if (Math.abs(nudged - currentTop) >= 5) {
+            lastSearchDir = nudgeDir;
+            searchTarget = nudged;
+          }
+        }
+
+        // Execute instant jump (zero slow intermediate blank sweep), then observe asynchronously
+        // via rAF until virtual/deferred DOM renders & height stabilizes (or target is found immediately).
+        if (Math.abs(searchTarget - currentTop) >= 1) {
+          scroller.scrollTop = searchTarget;
+        }
+        lastHopScrollHeight = scroller.scrollHeight;
+
+        const hopJumpTime = performance.now();
+        const minHopSettleMs = 45;
+        const maxHopSettleMs = 280;
+        let prevScrollHeight = scroller.scrollHeight;
+        let prevUserTurnCount = getUserTurnElements().length;
+        let prevAllTurnCount = document.querySelectorAll(Utils.SELECTORS.query.chatTurn).length;
+        let stableCount = 0;
+        let settleRafId = null;
+        let hopCanceled = false;
+
+        activeNavigationCancel = () => {
+          hopCanceled = true;
+          if (settleRafId !== null) {
+            cancelAnimationFrame(settleRafId);
+            settleRafId = null;
+          }
+          if (searchSettleTimer) {
+            clearTimeout(searchSettleTimer);
+            searchSettleTimer = null;
+          }
+        };
+
+        const hopSettleTick = (now) => {
+          if (hopCanceled || !isNavigating || myToken !== navigationToken) return;
+
+          const curH = scroller.scrollHeight;
+          const curUserTurns = getUserTurnElements();
+          const curUserCount = curUserTurns.length;
+          const curAllTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
+          const curAllCount = curAllTurns.length;
+
+          const domMutated =
+            curH !== prevScrollHeight ||
+            curUserCount !== prevUserTurnCount ||
+            curAllCount !== prevAllTurnCount;
+
+          if (domMutated) {
+            prevScrollHeight = curH;
+            prevUserTurnCount = curUserCount;
+            prevAllTurnCount = curAllCount;
+            stableCount = 0;
+          } else {
+            stableCount++;
+          }
+
+          const foundEl = findTargetElement(catalogItem);
+          if (foundEl) {
+            settleRafId = null;
+            landOnTarget(foundEl);
+            return;
+          }
+
+          const hopElapsed = now - hopJumpTime;
+          const curMetrics = getScrollerViewportMetrics(scroller);
+          const curViewBound = {
+            topMin: curMetrics.top - curMetrics.height * 1.5,
+            topMax: curMetrics.top + curMetrics.height * 2.5
+          };
+          const nearViewportTurns = curAllTurns.filter((t) => {
+            const r = t.getBoundingClientRect();
+            return r.bottom >= curMetrics.top - 120 && r.top <= curMetrics.top + curMetrics.height + 120;
+          });
+          const hasUnhydratedViewportTurn = nearViewportTurns.some((t) => {
+            const cont = t.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+            if (!cont) return true;
+            if (cont.classList.contains(Utils.SELECTORS.class.userTurn)) {
+              return !getCleanPromptText(t) && !turnHasAttachment(t);
+            }
+            return false;
+          });
+          const hasAnchorsNow = domMutated
+            ? false
+            : (inferVisibleRoundRange(curUserTurns, catalogData, null, curViewBound).anchors.length > 0 || sawBottomMiss || sawTopMiss || emptyGapConsecutive > 0);
+          const readyByStability = !hasUnhydratedViewportTurn && hopElapsed >= minHopSettleMs && stableCount >= 2 && hasAnchorsNow;
+
+          if (readyByStability || hopElapsed >= maxHopSettleMs) {
+            settleRafId = null;
+            if (hop < maxSearchHops) {
+              runSearchHop(hop + 1);
             } else {
               cleanup(false);
             }
-          };
+            return;
+          }
 
-          anchorRafId = requestAnimationFrame(anchorTick);
-          activeNavigationCancel = () => {
-            if (anchorRafId !== null) {
-              cancelAnimationFrame(anchorRafId);
-              anchorRafId = null;
-            }
-          };
+          settleRafId = requestAnimationFrame(hopSettleTick);
         };
 
-        // Self-adaptive high-speed smooth cruise (capped at ~460ms so it never feels slow even across 50,000+ pixels)
-        // Eliminates violent instant jumps (preJumpTop) which cause browser reflow thrashing.
-        const duration = Math.min(460, Math.max(260, Math.round(200 + Math.sqrt(totalDistance) * 3.6)));
-
-        activeNavigationCancel = animateScrollTo(scroller, targetScrollTop, duration, () => {
-          anchorLand();
-        });
+        settleRafId = requestAnimationFrame(hopSettleTick);
       };
 
       // Check if target is already in DOM
@@ -2527,128 +3480,6 @@
         landOnTarget(initialTargetEl);
         return;
       }
-
-      // Target not in DOM yet (virtualized): adaptive proportional hydration search across rendered round anchors
-      const maxSearchHops = 3;
-      const targetRound = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
-      const totalRounds = catalogItem.totalRounds || new Set(catalogData.map(i => i.roundIndex)).size || 1;
-
-      const runSearchHop = (hop) => {
-        if (!isNavigating) return;
-
-        const quickFound = findTargetElement(catalogItem);
-        if (quickFound) {
-          landOnTarget(quickFound);
-          return;
-        }
-
-        const liveTurns = getUserTurnElements();
-        const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-        const currentTop = scroller.scrollTop;
-
-        if (hop > maxSearchHops || maxScroll <= 0) {
-          cleanup(false);
-          return;
-        }
-
-        const visRange = inferVisibleRoundRange(liveTurns, catalogData);
-        let searchTarget;
-
-        if (visRange.minRound !== -1 && visRange.maxRound !== -1) {
-          if (targetRound < visRange.minRound) {
-            if (hop === maxSearchHops || targetRound === 0 || visRange.minRound === 0) {
-              searchTarget = 0;
-            } else {
-              const est = Math.round(currentTop * (targetRound / Math.max(1, visRange.minRound)));
-              searchTarget = Math.min(Math.max(0, currentTop - 160), est);
-            }
-          } else if (targetRound > visRange.maxRound) {
-            const lastRound = Math.max(1, totalRounds - 1);
-            if (hop === maxSearchHops || targetRound >= lastRound || visRange.maxRound >= lastRound) {
-              searchTarget = maxScroll;
-            } else {
-              const span = Math.max(1, lastRound - visRange.maxRound);
-              const ratio = Math.min(1, (targetRound - visRange.maxRound) / span);
-              const est = Math.round(currentTop + (maxScroll - currentTop) * ratio);
-              searchTarget = Math.max(Math.min(maxScroll, currentTop + 160), est);
-            }
-          } else {
-            // Target round lies inside visible round span (e.g., off-edge chunk of same round); nudge in chunk direction
-            const nudge = catalogItem.chunkTargetDomIndex !== undefined &&
-              catalogItem.chunkTextDomIndex !== undefined &&
-              catalogItem.chunkTargetDomIndex < catalogItem.chunkTextDomIndex ? -400 : 400;
-            searchTarget = currentTop + nudge;
-          }
-        } else {
-          // None of the visible turns resolved uniquely: aim by global round ratio (never default blindly to 0)
-          const ratio = totalRounds > 1 ? (targetRound / (totalRounds - 1)) : 0;
-          searchTarget = Math.round(maxScroll * ratio);
-        }
-
-        searchTarget = Math.max(0, Math.min(maxScroll, searchTarget));
-        const searchDistance = Math.abs(searchTarget - currentTop);
-        const searchDuration = Math.min(550, Math.max(220, Math.round(180 + Math.sqrt(searchDistance) * 3.8)));
-
-        let frameCount = 0;
-        const startTop = currentTop;
-        const searchDelta = searchTarget - startTop;
-        const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-        const searchStartTime = performance.now();
-        let searchRafId = null;
-
-        const searchStep = (currentTime) => {
-          if (!isNavigating) return;
-          frameCount++;
-          const elapsed = currentTime - searchStartTime;
-          const progress = searchDistance < 2 ? 1 : Math.min(1, elapsed / searchDuration);
-          const easedProgress = easeOutCubic(progress);
-
-          scroller.scrollTop = Math.round(startTop + searchDelta * easedProgress);
-
-          // Check every 3 frames (~50ms) if target element has hydrated into DOM
-          if (frameCount % 3 === 0 || progress >= 1) {
-            const foundEl = findTargetElement(catalogItem);
-            if (foundEl) {
-              if (searchRafId !== null) {
-                cancelAnimationFrame(searchRafId);
-                searchRafId = null;
-              }
-              landOnTarget(foundEl);
-              return;
-            }
-          }
-
-          if (progress < 1) {
-            searchRafId = requestAnimationFrame(searchStep);
-          } else {
-            searchRafId = null;
-            searchSettleTimer = setTimeout(() => {
-              searchSettleTimer = null;
-              if (!isNavigating) return;
-              const settledEl = findTargetElement(catalogItem);
-              if (settledEl) {
-                landOnTarget(settledEl);
-              } else if (hop < maxSearchHops) {
-                runSearchHop(hop + 1);
-              } else {
-                cleanup(false);
-              }
-            }, 85);
-          }
-        };
-
-        searchRafId = requestAnimationFrame(searchStep);
-        activeNavigationCancel = () => {
-          if (searchRafId !== null) {
-            cancelAnimationFrame(searchRafId);
-            searchRafId = null;
-          }
-          if (searchSettleTimer) {
-            clearTimeout(searchSettleTimer);
-            searchSettleTimer = null;
-          }
-        };
-      };
 
       runSearchHop(1);
     } catch (error) {
@@ -2673,14 +3504,66 @@
         activeNavigationCancel = null;
       }
 
-      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-      const totalDistance = Math.abs(maxScroll - scroller.scrollTop);
-      if (totalDistance < 5) return;
+      const myToken = ++navigationToken;
+      activeNavState = null;
+      lastNavigationEndAt = 0;
 
-      const duration = Math.min(460, Math.max(260, Math.round(200 + Math.sqrt(totalDistance) * 3.6)));
-      activeNavigationCancel = animateScrollTo(scroller, maxScroll, duration, () => {
+      const getMaxScroll = () => Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const initialMax = getMaxScroll();
+      const totalDistance = Math.abs(initialMax - scroller.scrollTop);
+      if (totalDistance < 1) return;
+
+      const prevScrollBehavior = scroller.style.scrollBehavior;
+      const computedBehavior = window.getComputedStyle ? window.getComputedStyle(scroller).scrollBehavior : '';
+      const didOverrideBehavior = computedBehavior === 'smooth' || prevScrollBehavior === 'smooth';
+      if (didOverrideBehavior) {
+        scroller.style.scrollBehavior = 'auto';
+      }
+      const restoreBehavior = () => {
+        if (didOverrideBehavior) {
+          scroller.style.scrollBehavior = prevScrollBehavior;
+        }
+      };
+
+      if (totalDistance > 520) {
+        const approachDist = Math.min(340, Math.max(180, Math.round((scroller.clientHeight || 800) * 0.42)));
+        scroller.scrollTop = Math.max(0, initialMax - approachDist);
+      }
+
+      const remainingDistance = Math.abs(getMaxScroll() - scroller.scrollTop);
+      const duration = Math.min(210, Math.max(95, Math.round(80 + Math.sqrt(remainingDistance) * 4.5)));
+      let tailAttempts = 0;
+
+      const finishOrConverge = () => {
+        if (myToken !== navigationToken) {
+          restoreBehavior();
+          return;
+        }
+        const liveMax = getMaxScroll();
+        const tailRemaining = liveMax - scroller.scrollTop;
+        if (Math.abs(tailRemaining) > 4 && tailAttempts < 4) {
+          tailAttempts++;
+          if (Math.abs(tailRemaining) > 520) {
+            const approachDist = Math.min(340, Math.max(180, Math.round((scroller.clientHeight || 800) * 0.42)));
+            scroller.scrollTop = Math.max(0, liveMax - approachDist);
+          }
+          const settleDur = Math.min(180, Math.max(85, Math.round(70 + Math.sqrt(Math.abs(getMaxScroll() - scroller.scrollTop)) * 4)));
+          const settleCancel = animateScrollTo(scroller, getMaxScroll, settleDur, finishOrConverge);
+          activeNavigationCancel = () => {
+            settleCancel();
+            restoreBehavior();
+          };
+          return;
+        }
+        restoreBehavior();
         activeNavigationCancel = null;
-      });
+      };
+
+      const cancelAnim = animateScrollTo(scroller, getMaxScroll, duration, finishOrConverge);
+      activeNavigationCancel = () => {
+        cancelAnim();
+        restoreBehavior();
+      };
     } catch (error) {
       console.error('Error scrolling to bottom:', error);
     }
@@ -2747,6 +3630,9 @@
 
   function updateActiveTurnByViewport() {
     if (isNavigating) return;
+    if (lastNavigationEndAt > 0 && (performance.now() - lastNavigationEndAt) < 350) {
+      return;
+    }
 
     const scroller = getChatScrollContainer();
     if (!scroller) return;
@@ -2794,16 +3680,61 @@
     }
   }
 
+  let userScrollKeyListenerBound = false;
+
   function setupScrollSpy() {
     const scroller = getChatScrollContainer();
     if (!scroller || boundScrollers.has(scroller)) return;
 
     boundScrollers.add(scroller);
+
+    const onManualScrollInput = (e) => {
+      if (isNavigating) return;
+      if (e && e.target && e.target.closest && e.target.closest('#' + Utils.SELECTORS.id.catalogPanel)) {
+        return;
+      }
+      activeNavState = null;
+      lastNavigationEndAt = 0;
+    };
+    const onScrollbarPointerDown = (e) => {
+      if (e && e.target === scroller && e.offsetX >= scroller.clientWidth) {
+        onManualScrollInput(e);
+      }
+    };
+    scroller.addEventListener('wheel', onManualScrollInput, { passive: true });
+    scroller.addEventListener('touchstart', onManualScrollInput, { passive: true });
+    scroller.addEventListener('pointerdown', onScrollbarPointerDown, { passive: true });
+
+    if (!userScrollKeyListenerBound) {
+      userScrollKeyListenerBound = true;
+      window.addEventListener('keydown', (e) => {
+        if (isNavigating) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)) {
+          return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'PageUp' || e.key === 'PageDown' || e.key === 'Home' || e.key === 'End' || e.key === ' ') {
+          activeNavState = null;
+          lastNavigationEndAt = 0;
+        }
+      }, { passive: true });
+    }
+
     let scrollTimer = null;
     scroller.addEventListener('scroll', () => {
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => {
-        updateActiveTurnByViewport();
+        const withinNavGrace = lastNavigationEndAt > 0 && (performance.now() - lastNavigationEndAt) < 400;
+        if (!isNavigating && !withinNavGrace) {
+          const movedPastLandedSpot = activeNavState &&
+            activeNavState.landedScrollTop !== undefined &&
+            Math.abs(scroller.scrollTop - activeNavState.landedScrollTop) > 12;
+          if (!activeNavState || movedPastLandedSpot) {
+            activeNavState = null;
+            lastNavigationEndAt = 0;
+            updateActiveTurnByViewport();
+          }
+        }
         enrichCatalogAttachmentNames();
       }, 100);
     }, { passive: true });
@@ -2861,6 +3792,7 @@
       listItem.classList.add('has-sub-items');
     }
     listItem.setAttribute('data-turn-index', catalogItem.turnIndex);
+    listItem.setAttribute('data-item-type', catalogItem.type || 'text');
     if (catalogItem.turnCounter !== undefined) {
       listItem.setAttribute('data-turn-counter', catalogItem.turnCounter);
     }
@@ -2977,7 +3909,28 @@
       listContainer.appendChild(listItem);
     });
 
-    updateActiveTurnByViewport();
+    const scroller = getChatScrollContainer();
+    const withinNavGrace = lastNavigationEndAt > 0 && (performance.now() - lastNavigationEndAt) < 400;
+    const stillAtLandedSpot = Boolean(
+      activeNavState &&
+      activeNavState.catalogItem && (
+        isNavigating ||
+        withinNavGrace ||
+        !scroller ||
+        activeNavState.landedScrollTop === undefined ||
+        Math.abs(scroller.scrollTop - activeNavState.landedScrollTop) <= 24
+      )
+    );
+
+    if (stillAtLandedSpot) {
+      applyNavSelectionHighlight(listContainer, activeNavState.catalogItem, isNavigating);
+    } else {
+      if (activeNavState) {
+        activeNavState = null;
+        lastNavigationEndAt = 0;
+      }
+      updateActiveTurnByViewport();
+    }
   }
 
   function toggleCatalog(forceShow) {
