@@ -350,6 +350,8 @@
       const currentUrl = window.location.href;
       if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
+        Catalog.clearAttachmentCache?.();
+        State.setCatalogData([]);
         checkAndInjectButton();
         return;
       }
