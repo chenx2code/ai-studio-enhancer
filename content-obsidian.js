@@ -173,6 +173,18 @@
     }
   }
 
+  // Build official Obsidian URI using percent-encoding (%20 for spaces instead of application/x-www-form-urlencoded +)
+  function buildObsidianUri(params = {}) {
+    const queryParts = [];
+    Object.keys(params).forEach((key) => {
+      const value = params[key];
+      if (value !== undefined && value !== null && value !== '') {
+        queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+      }
+    });
+    return `obsidian://new?${queryParts.join('&')}`;
+  }
+
   // Trigger Obsidian URI dispatch via hidden link click
   function triggerObsidianUri(uri) {
     const a = document.createElement('a');
@@ -442,20 +454,14 @@
       // 4. Copy Markdown to clipboard (Obsidian clipboard-transit pattern)
       await writeToClipboard(markdown);
 
-      // 5. Build official Obsidian URI scheme parameters
-      const params = new URLSearchParams();
-      params.append('file', notePath);
-      params.append('clipboard', 'true');
-
+      // 5. Build official Obsidian URI scheme parameters (avoid URLSearchParams which encodes spaces as +)
       const targetVault = options.vault !== undefined ? options.vault : settings.obsidianVault;
-      if (targetVault && targetVault.trim()) {
-        params.append('vault', targetVault.trim());
-      }
-      if (settings.obsidianSilent !== false) {
-        params.append('silent', 'true');
-      }
-
-      const obsidianUri = `obsidian://new?${params.toString()}`;
+      const obsidianUri = buildObsidianUri({
+        file: notePath,
+        clipboard: 'true',
+        vault: targetVault && targetVault.trim() ? targetVault.trim() : '',
+        silent: settings.obsidianSilent !== false ? 'true' : ''
+      });
 
       // 6. Trigger native URI dispatch
       triggerObsidianUri(obsidianUri);
@@ -513,6 +519,7 @@
   }
 
   global.__AIStudioEnhancer__.Obsidian = {
+    buildObsidianUri,
     exportToObsidian,
     handleObsidianExport,
     showObsidianModal,
