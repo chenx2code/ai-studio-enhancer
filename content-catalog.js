@@ -664,9 +664,7 @@
     }
 
     const liveImages = Array.from(
-      document.querySelectorAll(
-        '.image-container img, ms-image-chunk img, ms-prompt-chunk img, .chat-turn-container.user img'
-      )
+      document.querySelectorAll('.chat-turn-container.user img')
     ).filter(img => {
       if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
       if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
@@ -702,26 +700,48 @@
 
           // 2. Scan live DOM
           let targetImg = null;
+          let roundContainerResolved = false;
           const roundTurnEls = [];
+          const roundImageItems = imageItems.filter(x => x.roundIndex === roundIdx);
+          const roundTotalImages = roundImageItems.length || 1;
 
           // Strategy A: Gather rendered turn element(s) belonging to this round
           if (isFullDomPresent) {
             if (effectiveMode === 'round') {
-              if (userTurnElements[roundIdx]) roundTurnEls.push(userTurnElements[roundIdx]);
+              if (userTurnElements[roundIdx]) {
+                roundTurnEls.push(userTurnElements[roundIdx]);
+                roundContainerResolved = true;
+              }
+            } else if (item.chunkTargetDomIndex !== undefined && userTurnElements[item.chunkTargetDomIndex]) {
+              const targetChunkEl = userTurnElements[item.chunkTargetDomIndex];
+              roundContainerResolved = true;
+              const sameChunkImageItems = roundImageItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
+              const localIdx = Math.max(0, sameChunkImageItems.indexOf(item));
+              targetImg = getTurnContentImages(targetChunkEl)[localIdx] || null;
             } else {
               const startD = item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : roundIdx;
               const endD = item.chunkEndDomIndex !== undefined ? item.chunkEndDomIndex : startD;
               for (let d = startD; d <= endD; d++) {
                 if (userTurnElements[d]) roundTurnEls.push(userTurnElements[d]);
               }
+              if (roundTurnEls.length > 0) roundContainerResolved = true;
             }
           } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
             const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
             if (sameTextRoundsCount === 1) {
               const matchedTextIdx = userTurnElements.findIndex(el => textsLooselyMatch(getCleanPromptText(el), item.pureText));
               if (matchedTextIdx !== -1) {
+                roundContainerResolved = true;
                 if (effectiveMode === 'round') {
                   roundTurnEls.push(userTurnElements[matchedTextIdx]);
+                } else if (item.chunkTargetDomIndex !== undefined && item.chunkTextDomIndex !== undefined) {
+                  const targetPos = matchedTextIdx + (item.chunkTargetDomIndex - item.chunkTextDomIndex);
+                  if (targetPos >= 0 && targetPos < userTurnElements.length) {
+                    const targetChunkEl = userTurnElements[targetPos];
+                    const sameChunkImageItems = roundImageItems.filter(x => x.chunkTargetDomIndex === item.chunkTargetDomIndex);
+                    const localIdx = Math.max(0, sameChunkImageItems.indexOf(item));
+                    targetImg = getTurnContentImages(targetChunkEl)[localIdx] || null;
+                  }
                 } else {
                   const startOffset = (item.chunkTextDomIndex || 0) - (item.chunkStartDomIndex || 0);
                   const endOffset = (item.chunkEndDomIndex || 0) - (item.chunkStartDomIndex || 0);
@@ -734,7 +754,7 @@
             }
           }
 
-          if (roundTurnEls.length > 0) {
+          if (!targetImg && roundTurnEls.length > 0) {
             const roundImgs = [];
             roundTurnEls.forEach((turnEl) => {
               roundImgs.push(...getTurnContentImages(turnEl));
@@ -742,9 +762,9 @@
             targetImg = roundImgs[subIdx] || null;
           }
 
-          // Strategy B: Fallback to liveImages if only one round with images exists or uniquely text-matched parent turn
-          if (!targetImg && liveImages.length > 0) {
-            if (singleImageRound) {
+          // Strategy B: Fallback to user-turn liveImages only if the round's DOM container wasn't already localized
+          if (!targetImg && !roundContainerResolved && liveImages.length > 0) {
+            if (singleImageRound && (roundTotalImages === 1 || liveImages.length === roundTotalImages)) {
               targetImg = liveImages[subIdx] || null;
             } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
               const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
@@ -760,7 +780,7 @@
           }
 
           if (targetImg) {
-            const info = Utils.extractImageInfo(targetImg, subIdx, liveImages.length || 1);
+            const info = Utils.extractImageInfo(targetImg, subIdx, roundTotalImages);
             if (!info.isDefaultName && info.fileName) {
               item.fileName = info.fileName;
               item.fileType = info.fileType;
@@ -933,6 +953,16 @@
               }
             }
           }
+        } else if (mutation.type === 'attributes') {
+          const target = mutation.target;
+          if (target && target.tagName && target.tagName.toLowerCase() === 'img') {
+            if (target.closest && target.closest('.chat-turn-container.user')) {
+              const data = State.getCatalogData();
+              if (data && data.some(item => item.type === 'image' && item.isDefaultName)) {
+                shouldEnrich = true;
+              }
+            }
+          }
         }
         if (shouldValidate && shouldEnrich) break;
       }
@@ -948,7 +978,9 @@
 
     observer.observe(conversationContainer, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['alt', 'title', 'data-filename', 'data-name']
     });
   }
 

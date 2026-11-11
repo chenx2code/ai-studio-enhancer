@@ -260,71 +260,164 @@
    * Extract clean image info, resolving true filename if present, or human-friendly label.
    */
   function extractImageInfo(img, imgIdx, totalImages) {
+    const UI_ACTION_EXACT = new Set([
+      'uploaded image preview',
+      'uploaded image',
+      'image preview',
+      'preview image',
+      'preview',
+      'image',
+      '[image]',
+      'generated image',
+      'attached image',
+      'loaded image',
+      'thinking',
+      'download',
+      'download image',
+      'download file',
+      'view full image',
+      'view fullscreen',
+      'fullscreen',
+      'full screen',
+      'open options',
+      'more options',
+      'options',
+      'menu',
+      'expand',
+      'collapse',
+      'zoom',
+      'zoom in',
+      'zoom out',
+      'copy',
+      'copy image',
+      'share',
+      'edit',
+      'close',
+      'remove',
+      'delete',
+      'view',
+      'more_vert',
+      '上传的图片预览',
+      '上传的图片',
+      '图片预览',
+      '图片',
+      '生成的图片',
+      '下载',
+      '下载图片',
+      '查看大图',
+      '查看原图',
+      '全屏',
+      '更多选项',
+      '打开选项',
+      '选项',
+      '菜单',
+      '展开',
+      '放大',
+      '复制',
+      '复制图片',
+      '分享',
+      '编辑',
+      '关闭',
+      '删除',
+      '移除'
+    ]);
+
     const isPlaceholder = (val) => {
       if (!val || typeof val !== 'string') return true;
       const clean = val.trim().toLowerCase();
+      if (!clean) return true;
+      if (UI_ACTION_EXACT.has(clean)) return true;
       return (
-        !clean ||
-        clean === 'uploaded image preview' ||
-        clean === 'uploaded image' ||
-        clean === 'image preview' ||
-        clean === 'preview image' ||
-        clean === 'preview' ||
-        clean === 'image' ||
-        clean === '[image]' ||
-        clean === '上传的图片预览' ||
-        clean === '上传的图片' ||
-        clean === '图片预览' ||
-        clean === '图片' ||
         clean.startsWith('view image') ||
+        clean.startsWith('view full') ||
         clean.startsWith('remove image') ||
         clean.startsWith('delete image') ||
-        clean === 'thinking'
+        clean.startsWith('download image') ||
+        clean.startsWith('download file')
       );
     };
 
-    // 1. Look for explicit real filename on img or its container hierarchy
-    let realName = '';
-    const candidates = [
-      img.getAttribute('data-filename'),
-      img.getAttribute('data-name'),
-      img.title,
-      img.alt
-    ];
+    const extractExtensionFilename = (val) => {
+      if (!val || typeof val !== 'string') return '';
+      const stripped = val.replace(/^(remove|delete|view|download|open|preview)\s+/i, '').trim();
+      if (!stripped || isPlaceholder(stripped)) return '';
+      const fullMatch = stripped.match(/^([^\/\\:*\?"<>|\r\n]+\.[a-zA-Z0-9]{2,5})$/);
+      if (fullMatch && !isPlaceholder(fullMatch[1])) return fullMatch[1].trim();
+      const tokenMatch = stripped.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
+      if (tokenMatch && !isPlaceholder(tokenMatch[1])) return tokenMatch[1].trim();
+      return '';
+    };
 
     const container = img.closest(
       '.image-container, ms-image-chunk, ms-prompt-chunk, .file-preview-container, [class*="file-preview"], [class*="image-preview"], [class*="preview"], [role="group"]'
     );
-    if (container) {
-      candidates.push(
-        container.getAttribute('data-filename'),
-        container.getAttribute('data-name'),
-        container.title,
-        container.getAttribute('aria-label')
-      );
+    const tightImageContainer = img.closest(
+      '.image-container, ms-image-chunk, .file-preview-container, [class*="file-preview"], [class*="image-preview"]'
+    ) || container;
 
-      // Button inside container (e.g. view full screen or remove)
-      const btn = container.querySelector('button[aria-label]');
-      if (btn) {
-        const btnLabel = btn.getAttribute('aria-label');
-        if (btnLabel && !isPlaceholder(btnLabel)) {
-          const match = btnLabel.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
-          if (match) candidates.push(match[1]);
-          else candidates.push(btnLabel);
+    const explicitFileAttrs = [
+      img.getAttribute('data-filename'),
+      img.getAttribute('data-name')
+    ];
+    if (container) {
+      explicitFileAttrs.push(
+        container.getAttribute('data-filename'),
+        container.getAttribute('data-name')
+      );
+    }
+    if (tightImageContainer) {
+      const downloadLinks = tightImageContainer.querySelectorAll('a[download]');
+      for (const link of downloadLinks) {
+        const dlName = link.getAttribute('download');
+        if (dlName) explicitFileAttrs.push(dlName);
+      }
+    }
+
+    const directImageAttrs = [img.title, img.alt];
+    if (container && container.title) {
+      directImageAttrs.push(container.title);
+    }
+
+    let realName = '';
+
+    // Tier A: Prefer explicit filename with extension on explicit attrs or img attributes
+    for (const cand of [...explicitFileAttrs, ...directImageAttrs]) {
+      const extName = extractExtensionFilename(cand);
+      if (extName) {
+        realName = extName;
+        break;
+      }
+    }
+
+    // Tier B: Scan tight container UI attributes/controls ONLY for strings containing a file extension
+    if (!realName && tightImageContainer) {
+      const uiCandidates = [
+        tightImageContainer.getAttribute('aria-label')
+      ];
+      const controls = tightImageContainer.querySelectorAll('button[aria-label], a[aria-label], [ng-reflect-message]');
+      for (const ctrl of controls) {
+        uiCandidates.push(
+          ctrl.getAttribute('aria-label'),
+          ctrl.getAttribute('ng-reflect-message')
+        );
+      }
+      for (const cand of uiCandidates) {
+        const extName = extractExtensionFilename(cand);
+        if (extName) {
+          realName = extName;
+          break;
         }
       }
     }
 
-    for (const cand of candidates) {
-      if (cand && !isPlaceholder(cand)) {
-        let cleaned = cand.replace(/^(remove|delete|view)\s+/i, '').trim();
-        if (cleaned && !isPlaceholder(cleaned)) {
-          const match = cleaned.match(/([^\s\/\\:*\?"<>|]+\.[a-zA-Z0-9]{2,5})/);
-          if (match) {
-            realName = match[1];
-            break;
-          } else if (!realName) {
+    // Tier C: Extensionless non-placeholder name ONLY from explicit attrs or img title/alt (never button aria-label)
+    if (!realName) {
+      for (const cand of [...explicitFileAttrs, ...directImageAttrs]) {
+        if (cand && !isPlaceholder(cand)) {
+          const cleaned = cand.trim();
+          if (cleaned && !isPlaceholder(cleaned)) {
             realName = cleaned;
+            break;
           }
         }
       }
@@ -379,7 +472,8 @@
       const images = Array.from(element.querySelectorAll('img')).filter((img) => {
         if (
           (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) ||
-          (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png')))
+          (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) ||
+          (img.alt && img.alt.trim().toLowerCase() === 'thinking')
         ) {
           return false;
         }
@@ -411,9 +505,68 @@
     });
 
     const totalImages = Math.max(domImages.length, apiImages.length);
+    const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
 
-    // Populate image attachments
-    if (domImages.length > 0) {
+    // Populate image attachments without shifting mounted chunks onto unmounted sibling slots
+    if (apiImages.length > 0) {
+      const usedDomImgs = new Set();
+      const useChunkDomAlignment = elementList.length > 1;
+
+      apiImages.forEach((apiImg, slotIdx) => {
+        let matchedDomIdx = -1;
+        if (useChunkDomAlignment && apiImg.domIndex !== undefined) {
+          matchedDomIdx = domImages.findIndex((d, i) => !usedDomImgs.has(i) && d.domIndex === apiImg.domIndex);
+        } else {
+          matchedDomIdx = domImages.findIndex((_, i) => !usedDomImgs.has(i));
+        }
+
+        if (matchedDomIdx !== -1) {
+          usedDomImgs.add(matchedDomIdx);
+          const { img } = domImages[matchedDomIdx];
+          const info = extractImageInfo(img, slotIdx, totalImages);
+          attachments.push({
+            type: 'image',
+            fileCategory: 'image',
+            fileType: info.fileType,
+            fileName: info.fileName,
+            isDefaultName: info.isDefaultName,
+            domIndex: apiImg.domIndex,
+            subIndex: slotIdx,
+            turnIndex: apiImg.index
+          });
+        } else {
+          attachments.push({
+            type: 'image',
+            fileCategory: 'image',
+            fileType: 'IMG',
+            fileName: totalImages > 1 ? `${defaultWord} ${slotIdx + 1}` : defaultWord,
+            isDefaultName: true,
+            domIndex: apiImg.domIndex,
+            subIndex: slotIdx,
+            turnIndex: apiImg.index
+          });
+        }
+      });
+
+      // Append any remaining DOM images beyond apiImages count
+      domImages.forEach(({ img, domIndex }, i) => {
+        if (usedDomImgs.has(i)) return;
+        const slotIdx = attachments.length;
+        const info = extractImageInfo(img, slotIdx, totalImages);
+        const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
+        const turnIndex = matchingChunk ? matchingChunk.index : (chunks[0] ? (chunks[0].index !== undefined ? chunks[0].index : undefined) : undefined);
+        attachments.push({
+          type: 'image',
+          fileCategory: 'image',
+          fileType: info.fileType,
+          fileName: info.fileName,
+          isDefaultName: info.isDefaultName,
+          domIndex: domIndex,
+          subIndex: slotIdx,
+          turnIndex: turnIndex
+        });
+      });
+    } else if (domImages.length > 0) {
       domImages.forEach(({ img, domIndex }, idx) => {
         const info = extractImageInfo(img, idx, totalImages);
         const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
@@ -427,38 +580,6 @@
           domIndex: domIndex,
           subIndex: idx,
           turnIndex: turnIndex
-        });
-      });
-
-      // If API has more images than DOM (due to virtualization), supplement missing ones
-      if (apiImages.length > domImages.length) {
-        const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
-        for (let i = domImages.length; i < apiImages.length; i++) {
-          const apiImg = apiImages[i];
-          attachments.push({
-            type: 'image',
-            fileCategory: 'image',
-            fileType: 'IMG',
-            fileName: totalImages > 1 ? `${defaultWord} ${i + 1}` : defaultWord,
-            isDefaultName: true,
-            domIndex: apiImg.domIndex,
-            subIndex: i,
-            turnIndex: apiImg.index
-          });
-        }
-      }
-    } else if (apiImages.length > 0) {
-      const defaultWord = chrome.i18n.getMessage('imageLabel') || 'Image';
-      apiImages.forEach((apiImg, idx) => {
-        attachments.push({
-          type: 'image',
-          fileCategory: 'image',
-          fileType: 'IMG',
-          fileName: totalImages > 1 ? `${defaultWord} ${idx + 1}` : defaultWord,
-          isDefaultName: true,
-          domIndex: apiImg.domIndex,
-          subIndex: idx,
-          turnIndex: apiImg.index
         });
       });
     }
