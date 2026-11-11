@@ -49,8 +49,8 @@
   --catalog-icon-video-color: #be185d;
   --catalog-icon-archive-bg: #fef3c7;
   --catalog-icon-archive-color: #92400e;
-  --catalog-icon-file-bg: #f1f3f4;
-  --catalog-icon-file-color: #444746;
+  --catalog-icon-file-bg: #f1f5f9;
+  --catalog-icon-file-color: #64748b;
 }
 
 /* Dark Theme Support */
@@ -97,8 +97,8 @@
     --catalog-icon-video-color: #f472b6;
     --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
     --catalog-icon-archive-color: #fbbf24;
-    --catalog-icon-file-bg: #2d2f31;
-    --catalog-icon-file-color: #c4c7c5;
+    --catalog-icon-file-bg: rgba(226, 232, 240, 0.16);
+    --catalog-icon-file-color: #e2e8f0;
   }
 }
 
@@ -149,8 +149,8 @@ body[data-theme="dark"],
   --catalog-icon-video-color: #f472b6;
   --catalog-icon-archive-bg: rgba(254, 243, 199, 0.15);
   --catalog-icon-archive-color: #fbbf24;
-  --catalog-icon-file-bg: #2d2f31;
-  --catalog-icon-file-color: #c4c7c5;
+  --catalog-icon-file-bg: rgba(226, 232, 240, 0.16);
+  --catalog-icon-file-color: #e2e8f0;
 }
 
 /* Hide button when its panel is open */
@@ -433,16 +433,45 @@ body[data-theme="dark"],
 /* Sub-item (Attachment) Compact Nested Styling */
 .catalog-list-item.catalog-item-sub {
   margin: 1px 6px;
-  padding: 2px 10px;
+  padding: 3px 10px;
   min-height: 24px;
   border-radius: 6px;
+  align-items: center;
 }
 
-/* Secondary typography for attachments */
-.catalog-list-item.catalog-item-sub .catalog-prompt-text {
+.catalog-list-item.catalog-item-sub .catalog-turn-badge {
+  margin-top: 0;
+}
+
+/* Single-line flex row keeps icon, tag, and filename aligned with right-edge ellipsis */
+.catalog-attachment-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--catalog-font-family);
   font-size: 12px;
   line-height: 1.35;
   color: var(--catalog-text-secondary);
+}
+
+.catalog-attachment-row .catalog-inline-icon {
+  margin-right: 5px;
+  vertical-align: 0;
+}
+
+.catalog-attachment-row .catalog-type-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-right: 5px;
+}
+
+.catalog-attachment-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Next root turn following an attachment gets comfortable section separation */

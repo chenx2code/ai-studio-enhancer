@@ -149,6 +149,9 @@
       } else if (att.type === 'video') {
         return '[YouTube Video]';
       } else {
+        if (att.isDefaultName) {
+          return att.fileType && att.fileType !== 'FILE' ? `[${att.fileType} File]` : '[File]';
+        }
         return att.fileName ? `[${att.fileType || 'File'}] ${att.fileName}` : `[${att.fileType || 'File'}]`;
       }
     });
