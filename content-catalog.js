@@ -11,7 +11,7 @@
   let nativePanelObserver = null;
   let currentlyObservedNativePanel = null;
 
-  let scrollSpyBound = false;
+  const boundScrollers = new WeakSet();
   const attachmentCache = new Map();
 
   const detectFileCategory = Utils.detectFileCategory;
@@ -46,76 +46,381 @@
   const extractImageInfo = Utils.extractImageInfo;
   const extractRoundAttachments = Utils.extractRoundAttachments;
 
+  // Query all currently rendered user chat turn DOM elements
+  function getUserTurnElements() {
+    const result = [];
+    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
+    for (const chatTurn of chatTurns) {
+      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
+      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
+        result.push(chatTurn);
+      }
+    }
+    return result;
+  }
+
+  // Extract visible prompt text from a chat turn element while skipping UI buttons/icons and token counters
+  function getCleanPromptText(turnEl) {
+    if (!turnEl) return '';
+    const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
+
+    const isIgnoredUiNode = (node) => {
+      let cur = node.parentElement;
+      while (cur && cur !== container) {
+        const tag = cur.tagName;
+        if (tag === 'BUTTON' || tag === 'MAT-ICON' || tag === 'SVG' || tag === 'STYLE' || tag === 'SCRIPT' || tag === 'NOSCRIPT') {
+          return true;
+        }
+        if (cur.getAttribute && cur.getAttribute('aria-hidden') === 'true') {
+          return true;
+        }
+        if (cur.classList && (
+          cur.classList.contains('material-symbols-outlined') ||
+          cur.classList.contains('material-icons') ||
+          cur.classList.contains('material-symbols-rounded') ||
+          cur.classList.contains('mat-icon') ||
+          cur.classList.contains('cdk-visually-hidden') ||
+          cur.classList.contains('sr-only')
+        )) {
+          return true;
+        }
+        cur = cur.parentElement;
+      }
+      return false;
+    };
+
+    let rawText = '';
+    if (typeof document.createTreeWalker === 'function') {
+      const parts = [];
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+      let textNode = walker.nextNode();
+      while (textNode) {
+        if (!isIgnoredUiNode(textNode)) {
+          const val = textNode.nodeValue;
+          if (val && val.trim()) {
+            parts.push(val);
+          }
+        }
+        textNode = walker.nextNode();
+      }
+      rawText = parts.join(' ');
+    } else {
+      rawText = container.textContent || '';
+    }
+
+    let text = rawText.replace(/\s+/g, ' ').trim();
+    // Strip token statistics like "7,281 tokens"
+    text = text.replace(/[\d,.]+[kKmM]?\s*tokens?/gi, '').trim();
+    return text;
+  }
+
+  // Normalize API Markdown text and rendered DOM text into a consistent lowercase form for comparison
+  function normalizeTextForMatch(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/^\s{0,3}(?:```+|~~~+)[^\n]*$/gm, ' ')
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/^\s{0,3}(?:>+\s*|#{1,6}\s+|[-*+]\s+|\d+\.\s+)/gm, '')
+      .replace(/[`*~]+/g, '')
+      .replace(/(^|\s)_+/g, '$1')
+      .replace(/_+(\s|$)/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function compactTextForMatch(normText) {
+    return normText ? normText.replace(/\s+/g, '') : '';
+  }
+
+  // Compare DOM text and API prompt text resiliently across Markdown formatting and line breaks
+  function textsLooselyMatch(domText, apiText) {
+    const dNorm = normalizeTextForMatch(domText);
+    const aNorm = normalizeTextForMatch(apiText);
+    if (!dNorm || !aNorm) return false;
+    if (dNorm === aNorm) return true;
+
+    const dComp = compactTextForMatch(dNorm);
+    const aComp = compactTextForMatch(aNorm);
+    if (!dComp || !aComp) return false;
+    if (dComp === aComp) return true;
+
+    // Require minimum normalized length >= 6 before substring/prefix matching to avoid short-token collisions
+    if (aComp.length >= 6 && dComp.length >= 6) {
+      if (dComp.includes(aComp) || aComp.includes(dComp)) return true;
+      const prefixLen = Math.min(32, aComp.length, dComp.length);
+      if (prefixLen >= 10 && dComp.slice(0, prefixLen) === aComp.slice(0, prefixLen)) return true;
+    }
+    return false;
+  }
+
+  function getTurnContentImages(turnEl) {
+    if (!turnEl) return [];
+    return Array.from(turnEl.querySelectorAll('img')).filter((img) => {
+      if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
+      if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
+      if (img.alt && img.alt.trim().toLowerCase() === 'thinking') return false;
+      return true;
+    });
+  }
+
+  function turnHasAttachment(turnEl) {
+    if (!turnEl) return false;
+    if (getTurnContentImages(turnEl).length > 0) return true;
+    return Boolean(
+      turnEl.querySelector(
+        'ms-file-chunk, ms-media-chunk, ms-image-chunk, ms-youtube-chunk, ms-video-chunk, ms-audio-chunk, ms-drive-file, [class*="file"], [class*="attachment"], [data-test-id*="file"]'
+      )
+    );
+  }
+
+  // Check whether a turn element contains an image matching a real (non-placeholder) filename
+  function matchImageInTurn(turnEl, targetName) {
+    if (!turnEl || !targetName) return false;
+    const cleanTarget = targetName.trim().toLowerCase();
+    if (!cleanTarget) return false;
+    const imgs = getTurnContentImages(turnEl);
+    for (const img of imgs) {
+      const alt = (img.alt || '').trim().toLowerCase();
+      if (alt && (alt === cleanTarget || alt.includes(cleanTarget) || cleanTarget.includes(alt))) return true;
+      if (img.src && !img.src.startsWith('data:') && img.src.toLowerCase().includes(cleanTarget)) return true;
+    }
+    return false;
+  }
+
+  function matchAttachmentInTurn(turnEl, fileName) {
+    if (!turnEl || !fileName) return false;
+    if (matchImageInTurn(turnEl, fileName)) return true;
+    // File chips/cards in DOM always mark the turn as containing an attachment
+    if (!turnHasAttachment(turnEl)) return false;
+    const normTarget = normalizeTextForMatch(fileName);
+    if (!normTarget) return false;
+    const normTurnText = normalizeTextForMatch(getCleanPromptText(turnEl));
+    if (normTurnText && normTurnText.includes(normTarget)) return true;
+    const compTarget = compactTextForMatch(normTarget);
+    const compTurn = compactTextForMatch(normTurnText);
+    return Boolean(compTarget && compTurn && compTurn.includes(compTarget));
+  }
+
+  function extractRoundsSummary(catalogData) {
+    const byRound = new Map();
+    if (!Array.isArray(catalogData)) return [];
+    catalogData.forEach((item) => {
+      const rIdx = item.roundIndex;
+      if (rIdx === undefined || rIdx === null) return;
+      if (!byRound.has(rIdx)) {
+        byRound.set(rIdx, {
+          roundIndex: rIdx,
+          fullText: item.pureText || '',
+          hasAttachments: item.type !== 'text',
+          chunkStartDomIndex: item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : (item.startDomIndex !== undefined ? item.startDomIndex : rIdx),
+          chunkEndDomIndex: item.chunkEndDomIndex !== undefined ? item.chunkEndDomIndex : (item.endDomIndex !== undefined ? item.endDomIndex : rIdx),
+          chunkTextDomIndex: item.chunkTextDomIndex !== undefined ? item.chunkTextDomIndex : (item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : rIdx),
+          fileNames: (!item.isDefaultName && item.fileName) ? [item.fileName] : []
+        });
+      } else {
+        const entry = byRound.get(rIdx);
+        if (!entry.fullText && item.pureText) entry.fullText = item.pureText;
+        if (item.chunkTextDomIndex !== undefined && item.type === 'text') {
+          entry.chunkTextDomIndex = item.chunkTextDomIndex;
+        }
+        if (item.type !== 'text') entry.hasAttachments = true;
+        if (!item.isDefaultName && item.fileName && !entry.fileNames.includes(item.fileName)) {
+          entry.fileNames.push(item.fileName);
+        }
+      }
+    });
+    return Array.from(byRound.values()).sort((a, b) => a.roundIndex - b.roundIndex);
+  }
+
+  // Detect whether Google AI Studio currently renders 1 ms-chat-turn per prompt round ('round')
+  // or 1 ms-chat-turn per user chunk ('chunk'), without misclassifying virtualized slices
+  function detectDomLayoutMode(userTurnElements, roundsSummary, totalUserChunks) {
+    const totalRounds = roundsSummary.length;
+    if (totalRounds === 0) return { mode: null, totalDomTurns: 0 };
+
+    if (!totalUserChunks || totalUserChunks <= totalRounds) {
+      return { mode: 'round', totalDomTurns: totalRounds };
+    }
+
+    if (userTurnElements.length === totalUserChunks) {
+      return { mode: 'chunk', totalDomTurns: totalUserChunks };
+    }
+
+    if (userTurnElements.length > totalRounds) {
+      return { mode: 'chunk', totalDomTurns: totalUserChunks };
+    }
+
+    if (userTurnElements.length === totalRounds) {
+      // Guard against coincidental virtual-scroll slice of chunk mode matching totalRounds count.
+      // Prioritize multi-chunk rounds containing both text and attachments, plus first/mid/last rounds.
+      const probeSet = new Set([0, Math.floor(totalRounds / 2), totalRounds - 1]);
+      for (const round of roundsSummary) {
+        if (probeSet.size >= 6) break;
+        if (round.hasAttachments && round.fullText) {
+          probeSet.add(round.roundIndex);
+        }
+      }
+      for (const round of roundsSummary) {
+        if (probeSet.size >= 6) break;
+        if (round.fullText) {
+          probeSet.add(round.roundIndex);
+        }
+      }
+
+      let roundModeConsistent = true;
+      let verifiedProbes = 0;
+
+      for (const rIdx of probeSet) {
+        const round = roundsSummary[rIdx];
+        const el = userTurnElements[rIdx];
+        if (!round || !el) continue;
+
+        const normRoundText = compactTextForMatch(normalizeTextForMatch(round.fullText));
+        if (round.fullText && normRoundText.length > 0) {
+          const domText = getCleanPromptText(el);
+          const normDomText = compactTextForMatch(normalizeTextForMatch(domText));
+          const textMatches = normRoundText.length >= 6
+            ? textsLooselyMatch(domText, round.fullText)
+            : normDomText === normRoundText;
+          if (!textMatches) {
+            roundModeConsistent = false;
+            break;
+          }
+          verifiedProbes++;
+        }
+
+        if (round.hasAttachments) {
+          if (!turnHasAttachment(el)) {
+            roundModeConsistent = false;
+            break;
+          }
+          verifiedProbes++;
+        }
+      }
+
+      if (!roundModeConsistent) {
+        return { mode: 'chunk', totalDomTurns: totalUserChunks };
+      }
+      if (verifiedProbes > 0) {
+        return { mode: 'round', totalDomTurns: totalRounds };
+      }
+      return { mode: null, totalDomTurns: totalUserChunks };
+    }
+
+    // Partially rendered DOM (virtualized): inspect any visible multi-chunk round with both text and attachments
+    for (const round of roundsSummary) {
+      if (round.hasAttachments && round.fullText && compactTextForMatch(normalizeTextForMatch(round.fullText)).length >= 6) {
+        const matchedEls = userTurnElements.filter(el => textsLooselyMatch(getCleanPromptText(el), round.fullText));
+        if (matchedEls.length === 1) {
+          if (turnHasAttachment(matchedEls[0])) {
+            return { mode: 'round', totalDomTurns: totalRounds };
+          }
+          return { mode: 'chunk', totalDomTurns: totalUserChunks };
+        }
+      }
+    }
+
+    const existingStamped = document.querySelector('ms-chat-turn[data-enhancer-dom-mode]');
+    if (existingStamped) {
+      const m = existingStamped.getAttribute('data-enhancer-dom-mode');
+      if (m === 'round') return { mode: 'round', totalDomTurns: totalRounds };
+      if (m === 'chunk') return { mode: 'chunk', totalDomTurns: totalUserChunks };
+    }
+
+    return { mode: null, totalDomTurns: totalUserChunks };
+  }
+
   function extractUserPrompts(conversationTurns) {
     if (!Array.isArray(conversationTurns)) {
       return [];
     }
 
-    // 1. Query all rendered user chat turn DOM elements
-    const userTurnElements = [];
-    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-    for (const chatTurn of chatTurns) {
-      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        userTurnElements.push(chatTurn);
-      }
-    }
+    // 1. Query all currently rendered user chat turn DOM elements
+    const userTurnElements = getUserTurnElements();
 
-    // 2. Group consecutive user chunks in conversationTurns into prompt rounds.
-    // In Google AI Studio, a user prompt turn (containing all text and attachment chunks)
-    // is rendered inside a single user ms-chat-turn. Consecutive user chunks belong to the same prompt round.
+    // 2. Group consecutive user chunks in conversationTurns into prompt rounds
     const userPromptRounds = [];
     let currentRound = null;
+    let userChunkCounter = 0;
 
     conversationTurns.forEach((turn, index) => {
       if (!Array.isArray(turn) || turn.length < 9) return;
       const role = turn[8];
       if (role === 'user') {
+        const domIndex = userChunkCounter;
+        userChunkCounter++;
+
         if (!currentRound) {
-          const roundIdx = userPromptRounds.length;
           currentRound = {
-            roundIndex: roundIdx,
+            roundIndex: userPromptRounds.length,
             primaryTurnIndex: index,
+            startDomIndex: domIndex,
+            textDomIndex: domIndex,
+            hasTextChunk: false,
+            hasAttachmentChunk: false,
             chunks: []
           };
           userPromptRounds.push(currentRound);
         }
-        currentRound.chunks.push({ turn, index, domIndex: currentRound.roundIndex });
+        const txt = (turn[0] || '').trim();
+        if (txt && !currentRound.hasTextChunk) {
+          currentRound.textDomIndex = domIndex;
+          currentRound.hasTextChunk = true;
+        }
+        const hasApiAtt =
+          (Array.isArray(turn[1]) && turn[1].length > 0) ||
+          (Array.isArray(turn[3]) && turn[3].length > 0) ||
+          (Array.isArray(turn[12]) && turn[12].length > 0) ||
+          (Array.isArray(turn[13]) && turn[13].length > 0) ||
+          (Array.isArray(turn[23]) && turn[23].length > 0);
+        if (hasApiAtt) {
+          currentRound.hasAttachmentChunk = true;
+        }
+
+        currentRound.chunks.push({ turn, index, domIndex });
+        currentRound.endDomIndex = domIndex;
       } else {
         // Model turn ends the current user prompt round
         currentRound = null;
       }
     });
 
+    const totalUserChunks = userChunkCounter;
     const totalRounds = userPromptRounds.length;
+    const roundsSummary = userPromptRounds.map((round, roundIdx) => {
+      const textParts = [];
+      round.chunks.forEach(({ turn }) => {
+        const t = (turn[0] || '').trim();
+        if (t) textParts.push(t);
+      });
+      return {
+        roundIndex: roundIdx,
+        fullText: textParts.join(' '),
+        hasAttachments: round.hasAttachmentChunk || round.chunks.length > 1,
+        chunkStartDomIndex: round.startDomIndex,
+        chunkEndDomIndex: round.endDomIndex
+      };
+    });
+
+    const detected = detectDomLayoutMode(userTurnElements, roundsSummary, totalUserChunks);
+    const effectiveMode = detected.mode || 'chunk';
+    const isFullDomPresent = Boolean(detected.mode && detected.totalDomTurns > 0 && userTurnElements.length === detected.totalDomTurns);
+
+    // Only stamp sequential DOM indices when all expected user turns are mounted in DOM
+    if (isFullDomPresent) {
+      userTurnElements.forEach((el, idx) => {
+        el.setAttribute('data-enhancer-dom-index', String(idx));
+        el.setAttribute('data-enhancer-dom-mode', effectiveMode);
+      });
+    }
+
     const userPrompts = [];
     let turnCounter = 0;
-
-    // Stamp rendered user chat turn DOM elements with their precise DOM index
-    userTurnElements.forEach((el, idx) => {
-      el.setAttribute('data-enhancer-dom-index', String(idx));
-    });
 
     userPromptRounds.forEach((round, roundIdx) => {
       turnCounter++;
       const badgeStr = turnCounter < 10 ? '0' + turnCounter : String(turnCounter);
-
-      // Match with user turn DOM element corresponding to this round
-      const roundElements = [];
-      let turnElement = null;
-
-      if (userTurnElements.length === totalRounds && userTurnElements[roundIdx]) {
-        turnElement = userTurnElements[roundIdx];
-      } else if (userTurnElements.length === 1 && totalRounds === 1) {
-        turnElement = userTurnElements[0];
-      } else if (userTurnElements[roundIdx]) {
-        turnElement = userTurnElements[roundIdx];
-      }
-
-      if (turnElement) {
-        roundElements.push({ element: turnElement, domIndex: roundIdx });
-      }
-      const turnElementId = turnElement ? turnElement.id : null;
 
       // Extract combined text from all user chunks in this round
       const textParts = [];
@@ -128,7 +433,42 @@
       const fullText = textParts.join(' ');
       const primaryIndex = round.primaryTurnIndex;
 
-      // Extract attachments from DOM elements and API chunks in this round
+      // Match DOM elements belonging to this round ONLY when verified complete or uniquely text-matched
+      const roundElements = [];
+      let turnElement = null;
+      if (isFullDomPresent) {
+        if (effectiveMode === 'round') {
+          if (userTurnElements[roundIdx]) {
+            turnElement = userTurnElements[roundIdx];
+            roundElements.push({ element: turnElement, domIndex: roundIdx });
+          }
+        } else {
+          for (let d = round.startDomIndex; d <= round.endDomIndex; d++) {
+            if (userTurnElements[d]) {
+              roundElements.push({ element: userTurnElements[d], domIndex: d });
+            }
+          }
+          turnElement = userTurnElements[round.startDomIndex] || null;
+        }
+      } else if (fullText && userTurnElements.length > 0 && compactTextForMatch(normalizeTextForMatch(fullText)).length >= 6) {
+        const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, fullText)).length;
+        if (sameTextRoundsCount === 1) {
+          const textMatches = userTurnElements.filter(el => textsLooselyMatch(getCleanPromptText(el), fullText));
+          if (textMatches.length === 1) {
+            const matchedEl = textMatches[0];
+            if (effectiveMode === 'round' || round.startDomIndex === round.textDomIndex) {
+              turnElement = matchedEl;
+            }
+            roundElements.push({
+              element: matchedEl,
+              domIndex: effectiveMode === 'round' ? roundIdx : round.textDomIndex
+            });
+          }
+        }
+      }
+      const turnElementId = turnElement && turnElement.id ? turnElement.id : null;
+
+      // Extract attachments from matched DOM elements (if safely resolved) and API chunks in this round
       const attachments = extractRoundAttachments(round.chunks, roundElements, fullText);
 
       // Synchronize with attachmentCache: restore known real names or save newly resolved ones
@@ -154,19 +494,28 @@
         }
       });
 
+      const resolvedStartDomIndex = effectiveMode === 'round' ? roundIdx : round.startDomIndex;
+      const resolvedEndDomIndex = effectiveMode === 'round' ? roundIdx : round.endDomIndex;
+
       if (fullText) {
         // A. Round has text: text row is turn root (gets the sequence badge)
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
+          totalUserChunks: totalUserChunks,
+          domLayoutMode: detected.mode,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
-          startDomIndex: roundIdx,
-          endDomIndex: roundIdx,
-          targetDomIndex: roundIdx,
+          startDomIndex: resolvedStartDomIndex,
+          endDomIndex: resolvedEndDomIndex,
+          targetDomIndex: resolvedStartDomIndex,
+          chunkStartDomIndex: round.startDomIndex,
+          chunkEndDomIndex: round.endDomIndex,
+          chunkTextDomIndex: round.textDomIndex,
+          chunkTargetDomIndex: round.startDomIndex,
           turnElementId: turnElementId,
           promptText: fullText,
           pureText: fullText,
@@ -179,9 +528,17 @@
         let imgCounter = 0;
         attachments.forEach((att, attIdx) => {
           const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
+          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
+          const chunkAttDomIndex = attChunk
+            ? attChunk.domIndex
+            : ((effectiveMode !== 'round' && att.domIndex !== undefined) ? att.domIndex : round.startDomIndex);
+          const attTargetDomIndex = effectiveMode === 'round' ? roundIdx : chunkAttDomIndex;
+
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
+            totalUserChunks: totalUserChunks,
+            domLayoutMode: detected.mode,
             turnCounter: turnCounter,
             turnBadge: '',
             isTurnRoot: false,
@@ -192,9 +549,13 @@
             isDefaultName: Boolean(att.isDefaultName),
             pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
-            startDomIndex: roundIdx,
-            endDomIndex: roundIdx,
-            targetDomIndex: roundIdx,
+            startDomIndex: resolvedStartDomIndex,
+            endDomIndex: resolvedEndDomIndex,
+            targetDomIndex: attTargetDomIndex,
+            chunkStartDomIndex: round.startDomIndex,
+            chunkEndDomIndex: round.endDomIndex,
+            chunkTextDomIndex: round.textDomIndex,
+            chunkTargetDomIndex: chunkAttDomIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -208,9 +569,17 @@
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
           const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
+          const attChunk = round.chunks.find(c => c.index === att.turnIndex);
+          const chunkAttDomIndex = attChunk
+            ? attChunk.domIndex
+            : ((effectiveMode !== 'round' && att.domIndex !== undefined) ? att.domIndex : round.startDomIndex);
+          const attTargetDomIndex = effectiveMode === 'round' ? roundIdx : chunkAttDomIndex;
+
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
+            totalUserChunks: totalUserChunks,
+            domLayoutMode: detected.mode,
             turnCounter: turnCounter,
             turnBadge: isRoot ? badgeStr : '',
             isTurnRoot: isRoot,
@@ -221,9 +590,13 @@
             isDefaultName: Boolean(att.isDefaultName),
             pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
-            startDomIndex: roundIdx,
-            endDomIndex: roundIdx,
-            targetDomIndex: roundIdx,
+            startDomIndex: resolvedStartDomIndex,
+            endDomIndex: resolvedEndDomIndex,
+            targetDomIndex: attTargetDomIndex,
+            chunkStartDomIndex: round.startDomIndex,
+            chunkEndDomIndex: round.endDomIndex,
+            chunkTextDomIndex: round.textDomIndex,
+            chunkTargetDomIndex: chunkAttDomIndex,
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
@@ -236,14 +609,20 @@
         userPrompts.push({
           roundIndex: roundIdx,
           totalRounds: totalRounds,
+          totalUserChunks: totalUserChunks,
+          domLayoutMode: detected.mode,
           turnCounter: turnCounter,
           turnBadge: badgeStr,
           isTurnRoot: true,
           type: 'text',
           turnIndex: primaryIndex,
-          startDomIndex: roundIdx,
-          endDomIndex: roundIdx,
-          targetDomIndex: roundIdx,
+          startDomIndex: resolvedStartDomIndex,
+          endDomIndex: resolvedEndDomIndex,
+          targetDomIndex: resolvedStartDomIndex,
+          chunkStartDomIndex: round.startDomIndex,
+          chunkEndDomIndex: round.endDomIndex,
+          chunkTextDomIndex: round.textDomIndex,
+          chunkTargetDomIndex: round.startDomIndex,
           turnElementId: turnElementId,
           promptText: '[Prompt]',
           pureText: '',
@@ -259,19 +638,29 @@
 
   function clearAttachmentCache() {
     attachmentCache.clear();
+    const stampedTurns = document.querySelectorAll('ms-chat-turn[data-enhancer-dom-index]');
+    stampedTurns.forEach((el) => {
+      el.removeAttribute('data-enhancer-dom-index');
+      el.removeAttribute('data-enhancer-dom-mode');
+    });
   }
 
   function enrichCatalogAttachmentNames() {
     const catalogData = State.getCatalogData();
     if (!catalogData || catalogData.length === 0) return false;
 
-    const userTurnElements = [];
-    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-    for (const chatTurn of chatTurns) {
-      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        userTurnElements.push(chatTurn);
-      }
+    const userTurnElements = getUserTurnElements();
+    const roundsSummary = extractRoundsSummary(catalogData);
+    const totalUserChunks = catalogData[0].totalUserChunks || roundsSummary.length;
+    const detected = detectDomLayoutMode(userTurnElements, roundsSummary, totalUserChunks);
+    const effectiveMode = detected.mode || catalogData[0].domLayoutMode || 'chunk';
+    const isFullDomPresent = Boolean(detected.mode && detected.totalDomTurns > 0 && userTurnElements.length === detected.totalDomTurns);
+
+    if (isFullDomPresent) {
+      userTurnElements.forEach((el, idx) => {
+        el.setAttribute('data-enhancer-dom-index', String(idx));
+        el.setAttribute('data-enhancer-dom-mode', effectiveMode);
+      });
     }
 
     const liveImages = Array.from(
@@ -281,18 +670,18 @@
     ).filter(img => {
       if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
       if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
-      if (img.alt && img.alt.toLowerCase() === 'thinking') return false;
+      if (img.alt && img.alt.trim().toLowerCase() === 'thinking') return false;
       return true;
     });
 
     let updated = false;
 
-    const imageItems = catalogData.filter(item => !item.isTurnRoot && item.type === 'image');
+    const imageItems = catalogData.filter(item => item.type === 'image');
     const imageRoundIndices = new Set(imageItems.map(item => item.roundIndex));
     const singleImageRound = imageRoundIndices.size === 1;
 
     catalogData.forEach(item => {
-      if (!item.isTurnRoot && item.type === 'image') {
+      if (item.type === 'image') {
         const roundIdx = item.roundIndex;
         const subIdx = item.subIndex !== undefined ? item.subIndex : 0;
         const cacheKey = `${roundIdx}_${subIdx}`;
@@ -313,45 +702,60 @@
 
           // 2. Scan live DOM
           let targetImg = null;
+          const roundTurnEls = [];
 
-          // Strategy A: Find user turn matching this round
-          let targetTurnEl = null;
-          if (userTurnElements.length > 0) {
-            if (userTurnElements[roundIdx]) {
-              const cleanText = getCleanPromptText(userTurnElements[roundIdx]);
-              if (!item.pureText || cleanText.includes(item.pureText) || item.pureText.includes(cleanText)) {
-                targetTurnEl = userTurnElements[roundIdx];
+          // Strategy A: Gather rendered turn element(s) belonging to this round
+          if (isFullDomPresent) {
+            if (effectiveMode === 'round') {
+              if (userTurnElements[roundIdx]) roundTurnEls.push(userTurnElements[roundIdx]);
+            } else {
+              const startD = item.chunkStartDomIndex !== undefined ? item.chunkStartDomIndex : roundIdx;
+              const endD = item.chunkEndDomIndex !== undefined ? item.chunkEndDomIndex : startD;
+              for (let d = startD; d <= endD; d++) {
+                if (userTurnElements[d]) roundTurnEls.push(userTurnElements[d]);
               }
             }
-            if (!targetTurnEl && item.pureText) {
-              targetTurnEl = userTurnElements.find(el => {
-                const clean = getCleanPromptText(el);
-                return clean && (clean.includes(item.pureText) || item.pureText.includes(clean));
-              });
+          } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
+            const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
+            if (sameTextRoundsCount === 1) {
+              const matchedTextIdx = userTurnElements.findIndex(el => textsLooselyMatch(getCleanPromptText(el), item.pureText));
+              if (matchedTextIdx !== -1) {
+                if (effectiveMode === 'round') {
+                  roundTurnEls.push(userTurnElements[matchedTextIdx]);
+                } else {
+                  const startOffset = (item.chunkTextDomIndex || 0) - (item.chunkStartDomIndex || 0);
+                  const endOffset = (item.chunkEndDomIndex || 0) - (item.chunkStartDomIndex || 0);
+                  const baseIdx = matchedTextIdx - Math.max(0, startOffset);
+                  for (let k = Math.max(0, baseIdx); k <= baseIdx + Math.max(0, endOffset); k++) {
+                    if (userTurnElements[k]) roundTurnEls.push(userTurnElements[k]);
+                  }
+                }
+              }
             }
           }
 
-          if (targetTurnEl) {
-            const imgs = Array.from(targetTurnEl.querySelectorAll('img')).filter(img =>
-              (!img.classList || (!img.classList.contains('user-icon') && !img.classList.contains('avatar'))) &&
-              (!img.src || (!img.src.includes('googleusercontent.com/a/') && !img.src.includes('watermark.png'))) &&
-              (!img.alt || img.alt.toLowerCase() !== 'thinking')
-            );
-            targetImg = imgs[subIdx] || null;
+          if (roundTurnEls.length > 0) {
+            const roundImgs = [];
+            roundTurnEls.forEach((turnEl) => {
+              roundImgs.push(...getTurnContentImages(turnEl));
+            });
+            targetImg = roundImgs[subIdx] || null;
           }
 
-          // Strategy B: Fallback to liveImages if only one round with images exists or turn-level match was bypassed
+          // Strategy B: Fallback to liveImages if only one round with images exists or uniquely text-matched parent turn
           if (!targetImg && liveImages.length > 0) {
             if (singleImageRound) {
               targetImg = liveImages[subIdx] || null;
-            } else if (item.pureText) {
-              const matchedImages = liveImages.filter(img => {
-                const parentTurn = img.closest(Utils.SELECTORS.query.chatTurn) || img.closest('.chat-turn-container.user');
-                if (!parentTurn) return false;
-                const turnText = getCleanPromptText(parentTurn);
-                return turnText && (turnText.includes(item.pureText) || item.pureText.includes(turnText));
-              });
-              targetImg = matchedImages[subIdx] || null;
+            } else if (item.pureText && compactTextForMatch(normalizeTextForMatch(item.pureText)).length >= 6) {
+              const sameTextRoundsCount = roundsSummary.filter(r => r.fullText && textsLooselyMatch(r.fullText, item.pureText)).length;
+              if (sameTextRoundsCount === 1) {
+                const matchedImages = liveImages.filter(img => {
+                  const parentTurn = img.closest(Utils.SELECTORS.query.chatTurn) || img.closest('.chat-turn-container.user');
+                  if (!parentTurn) return false;
+                  return textsLooselyMatch(getCleanPromptText(parentTurn), item.pureText);
+                });
+                targetImg = matchedImages[subIdx] || null;
+              }
             }
           }
 
@@ -395,11 +799,11 @@
     try {
       const newData = extractUserPrompts(conversationTurns);
       const oldData = State.getCatalogData();
-      
+
       // Smart Merge: prevent fallback placeholder names from overwriting previously resolved filenames
       if (oldData && oldData.length > 0) {
         newData.forEach((newItem) => {
-          if (!newItem.isTurnRoot && newItem.isDefaultName) {
+          if (newItem.type === 'image' && newItem.isDefaultName) {
             const cacheKey = `${newItem.roundIndex}_${newItem.subIndex !== undefined ? newItem.subIndex : 0}`;
             if (attachmentCache.has(cacheKey)) {
               const cached = attachmentCache.get(cacheKey);
@@ -410,11 +814,11 @@
               newItem.displayText = cached.fileName;
               newItem.isDefaultName = false;
             } else {
-              const matchOld = oldData.find(o => 
-                !o.isTurnRoot && 
-                o.roundIndex === newItem.roundIndex && 
-                o.subIndex === newItem.subIndex && 
-                !o.isDefaultName && 
+              const matchOld = oldData.find(o =>
+                o.type === 'image' &&
+                o.roundIndex === newItem.roundIndex &&
+                o.subIndex === newItem.subIndex &&
+                !o.isDefaultName &&
                 o.fileName
               );
               if (matchOld) {
@@ -440,11 +844,13 @@
         isDifferent = true;
       } else {
         for (let i = 0; i < newData.length; i++) {
-          if (newData[i].promptText !== oldData[i].promptText || 
+          if (newData[i].promptText !== oldData[i].promptText ||
               newData[i].turnElementId !== oldData[i].turnElementId ||
               newData[i].turnBadge !== oldData[i].turnBadge ||
               newData[i].fileName !== oldData[i].fileName ||
-              newData[i].isDefaultName !== oldData[i].isDefaultName) {
+              newData[i].isDefaultName !== oldData[i].isDefaultName ||
+              newData[i].targetDomIndex !== oldData[i].targetDomIndex ||
+              newData[i].domLayoutMode !== oldData[i].domLayoutMode) {
             isDifferent = true;
             break;
           }
@@ -471,23 +877,16 @@
   }
 
   function validateCatalogData() {
-    let catalogData = State.getCatalogData();
+    const catalogData = State.getCatalogData();
     if (!catalogData || catalogData.length === 0) return;
 
-    const validItems = catalogData.filter(item => {
-      if (item.turnElementId) {
-        const element = document.getElementById(item.turnElementId);
-        return element !== null;
+    // Virtual scrolling unmounts off-screen ms-chat-turn nodes without deleting API turns.
+    // Clear disconnected DOM IDs instead of dropping catalog entries when turns unmount.
+    catalogData.forEach((item) => {
+      if (item.turnElementId && !document.getElementById(item.turnElementId)) {
+        item.turnElementId = null;
       }
-      return true;
     });
-
-    if (validItems.length !== catalogData.length) {
-      State.setCatalogData(validItems);
-      if (catalogVisible) {
-        renderPromptList();
-      }
-    }
   }
 
   function setupConversationObserver() {
@@ -609,18 +1008,26 @@
   }
 
   let activeNavigationCancel = null;
+  let activeNavigationAbort = null;
   let navigationClearTimer = null;
   let navigationSafetyTimer = null;
+  let searchSettleTimer = null;
   let isNavigating = false;
 
   // Retrieve the primary scrollable container for AI Studio chat history
   function getChatScrollContainer() {
+    const isScrollableY = (el) => {
+      if (!el) return false;
+      const s = window.getComputedStyle(el);
+      const oy = s.overflowY;
+      return (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && el.scrollHeight > el.clientHeight + 1;
+    };
+
     const turn = document.querySelector(Utils.SELECTORS.query.chatTurn) || document.querySelector(Utils.SELECTORS.query.chunkEditor);
     if (turn) {
       let p = turn.parentElement;
       while (p && p !== document.body) {
-        const s = window.getComputedStyle(p);
-        if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight) {
+        if (isScrollableY(p)) {
           return p;
         }
         p = p.parentElement;
@@ -629,14 +1036,12 @@
 
     const chunkEditor = document.querySelector(Utils.SELECTORS.query.chunkEditor);
     if (chunkEditor) {
-      const s = window.getComputedStyle(chunkEditor);
-      if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && chunkEditor.scrollHeight > chunkEditor.clientHeight) {
+      if (isScrollableY(chunkEditor)) {
         return chunkEditor;
       }
       for (const child of chunkEditor.children) {
         if (child.id === Utils.SELECTORS.id.catalogPanel) continue;
-        const cs = window.getComputedStyle(child);
-        if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && child.scrollHeight > child.clientHeight) {
+        if (isScrollableY(child)) {
           return child;
         }
       }
@@ -647,10 +1052,21 @@
       return chunkEditor;
     }
 
-    if (document.documentElement.scrollHeight > document.documentElement.clientHeight) {
+    if (document.documentElement.scrollHeight > document.documentElement.clientHeight + 1) {
       return document.documentElement;
     }
     return document.body;
+  }
+
+  function getScrollerViewportMetrics(scroller) {
+    if (!scroller || scroller === document.documentElement || scroller === document.body) {
+      return {
+        top: 0,
+        height: window.innerHeight || document.documentElement.clientHeight || 800
+      };
+    }
+    const rect = scroller.getBoundingClientRect();
+    return { top: rect.top, height: rect.height };
   }
 
   function getChatMainContainer() {
@@ -705,145 +1121,640 @@
     };
   }
 
-  // Extract clean normalized prompt text from a chat turn element, stripping token noise
-  function getCleanPromptText(turnEl) {
-    if (!turnEl) return '';
-    const container = turnEl.querySelector(Utils.SELECTORS.query.chatTurnContainer) || turnEl;
-    let text = (container.textContent || '').replace(/\s+/g, ' ').trim();
-    // Strip token statistics like "7,281 tokens"
-    text = text.replace(/[\d,.]+[kKmM]?\s*tokens?/gi, '').trim();
-    return text;
+  function doesElementMatchText(domText, apiText) {
+    if (!domText || !apiText) return false;
+    const dNorm = normalizeTextForMatch(domText);
+    const aNorm = normalizeTextForMatch(apiText);
+    if (!dNorm || !aNorm) return false;
+    const dComp = compactTextForMatch(dNorm);
+    const aComp = compactTextForMatch(aNorm);
+    if (!dComp || !aComp) return false;
+    if (dNorm === aNorm || dComp === aComp) return true;
+    if (aComp.length >= 6 && dComp.length >= 6) {
+      return textsLooselyMatch(domText, apiText);
+    }
+    return false;
   }
 
-  // Infer prompt DOM index corresponding to a rendered DOM turn
-  function inferCatalogIndex(turnEl, catalogData) {
+  // Build lookup structures and layout mode context shared across target resolution and scroll spy
+  function buildDomLookupContext(catalogData, userTurnsOpt) {
+    const userTurns = userTurnsOpt || getUserTurnElements();
+    const roundsSummary = extractRoundsSummary(catalogData || []);
+    const totalRounds = roundsSummary.length;
+    const totalUserChunks = (catalogData && catalogData[0] && catalogData[0].totalUserChunks) || totalRounds;
+    const detected = detectDomLayoutMode(userTurns, roundsSummary, totalUserChunks);
+    const effectiveMode = detected.mode || (catalogData && catalogData[0] && catalogData[0].domLayoutMode) || 'chunk';
+    const totalDomTurns = effectiveMode === 'round' ? totalRounds : totalUserChunks;
+    const isFullDomPresent = Boolean(detected.mode && detected.totalDomTurns > 0 && userTurns.length === detected.totalDomTurns);
+
+    const roundByIndex = new Map();
+    const chunkToRound = new Map();
+    const duplicateNormCounts = new Map();
+
+    roundsSummary.forEach((round) => {
+      roundByIndex.set(round.roundIndex, round);
+      for (let c = round.chunkStartDomIndex; c <= round.chunkEndDomIndex; c++) {
+        chunkToRound.set(c, round.roundIndex);
+      }
+      if (round.fullText) {
+        const comp = compactTextForMatch(normalizeTextForMatch(round.fullText));
+        if (comp) {
+          duplicateNormCounts.set(comp, (duplicateNormCounts.get(comp) || 0) + 1);
+        }
+      }
+    });
+
+    const domTextCache = new WeakMap();
+    const domAttCache = new WeakMap();
+
+    const getCachedCleanText = (el) => {
+      if (!el) return '';
+      if (domTextCache.has(el)) return domTextCache.get(el);
+      const val = getCleanPromptText(el);
+      domTextCache.set(el, val);
+      return val;
+    };
+
+    const getCachedHasAttachment = (el) => {
+      if (!el) return false;
+      if (domAttCache.has(el)) return domAttCache.get(el);
+      const val = turnHasAttachment(el);
+      domAttCache.set(el, val);
+      return val;
+    };
+
+    return {
+      userTurns,
+      roundsSummary,
+      totalRounds,
+      totalUserChunks,
+      detectedMode: detected.mode,
+      effectiveMode,
+      totalDomTurns,
+      isFullDomPresent,
+      roundByIndex,
+      chunkToRound,
+      duplicateNormCounts,
+      getCachedCleanText,
+      getCachedHasAttachment
+    };
+  }
+
+  function getExpectedUnitAtIndex(expIdx, ctx) {
+    if (expIdx < 0 || expIdx >= ctx.totalDomTurns) return null;
+    if (ctx.effectiveMode === 'round') {
+      const round = ctx.roundByIndex.get(expIdx);
+      if (!round) return null;
+      return {
+        roundIndex: round.roundIndex,
+        text: round.fullText || '',
+        expectText: Boolean(round.fullText),
+        expectAttachment: round.hasAttachments,
+        fileNames: round.fileNames || []
+      };
+    }
+    const rIdx = ctx.chunkToRound.get(expIdx);
+    const round = ctx.roundByIndex.get(rIdx);
+    if (!round) return null;
+    const isSingleChunkRound = round.chunkStartDomIndex === round.chunkEndDomIndex;
+    const isTextChunk = Boolean(round.fullText) && (isSingleChunkRound || expIdx === round.chunkTextDomIndex);
+    return {
+      roundIndex: round.roundIndex,
+      text: isTextChunk ? round.fullText : '',
+      expectText: isTextChunk,
+      expectAttachment: round.hasAttachments && (!isTextChunk || isSingleChunkRound),
+      fileNames: round.fileNames || []
+    };
+  }
+
+  // Score how consistently surrounding rendered DOM turns agree with assigning candidatePos -> targetExpIdx
+  function scoreCandidateContext(candidatePos, targetExpIdx, ctx) {
+    let score = 0;
+    let matches = 0;
+    let conflicts = 0;
+    let checkedNeighbors = 0;
+
+    const offsets = [-2, -1, 1, 2];
+    for (const delta of offsets) {
+      const domPos = candidatePos + delta;
+      const expIdx = targetExpIdx + delta;
+      if (domPos < 0 || domPos >= ctx.userTurns.length || expIdx < 0 || expIdx >= ctx.totalDomTurns) {
+        continue;
+      }
+
+      const exp = getExpectedUnitAtIndex(expIdx, ctx);
+      if (!exp) continue;
+
+      const nbEl = ctx.userTurns[domPos];
+      const nbText = ctx.getCachedCleanText(nbEl);
+      const nbCompLen = compactTextForMatch(normalizeTextForMatch(nbText)).length;
+
+      if (exp.expectText) {
+        const expCompLen = compactTextForMatch(normalizeTextForMatch(exp.text)).length;
+        if (expCompLen >= 4) {
+          checkedNeighbors++;
+          if (doesElementMatchText(nbText, exp.text)) {
+            score += 2;
+            matches++;
+          } else if (nbCompLen >= 4) {
+            score -= 3;
+            conflicts++;
+          }
+        }
+      } else if (exp.expectAttachment) {
+        checkedNeighbors++;
+        const hasAtt = ctx.getCachedHasAttachment(nbEl);
+        if (hasAtt) {
+          score += 1;
+          matches++;
+        } else if (nbCompLen >= 6) {
+          score -= 2;
+          conflicts++;
+        }
+      }
+    }
+
+    return { score, matches, conflicts, checkedNeighbors };
+  }
+
+  function inferUniqueTextRoundIndex(domText, ctx) {
+    const compDom = compactTextForMatch(normalizeTextForMatch(domText));
+    if (!compDom) return -1;
+
+    const strictMatches = [];
+    const looseMatches = [];
+
+    for (const round of ctx.roundsSummary) {
+      if (!round.fullText) continue;
+      const normA = normalizeTextForMatch(round.fullText);
+      const compA = compactTextForMatch(normA);
+      if (!compA) continue;
+      if (compDom === compA) {
+        strictMatches.push(round.roundIndex);
+      } else if (compDom.length >= 6 && compA.length >= 6 && textsLooselyMatch(domText, round.fullText)) {
+        const ratio = Math.min(compDom.length, compA.length) / Math.max(compDom.length, compA.length);
+        if (ratio >= 0.45) {
+          looseMatches.push(round.roundIndex);
+        }
+      }
+    }
+
+    if (strictMatches.length === 1) return strictMatches[0];
+    if (strictMatches.length === 0 && looseMatches.length === 1) return looseMatches[0];
+    return -1;
+  }
+
+  // Always returns roundIndex (0 .. totalRounds - 1), or -1 if undetermined
+  function inferCatalogRoundIndex(turnEl, catalogData, ctxOpt, domPosOpt) {
     if (!turnEl || !catalogData || catalogData.length === 0) return -1;
 
-    // 1. Stamped DOM index attribute
+    const ctx = ctxOpt || buildDomLookupContext(catalogData);
+    const domPos = domPosOpt !== undefined ? domPosOpt : ctx.userTurns.indexOf(turnEl);
+    if (domPos === -1) return -1;
+
+    // 1. Verified full-DOM fast path
+    if (ctx.isFullDomPresent) {
+      if (ctx.effectiveMode === 'round') {
+        return domPos < ctx.totalRounds ? domPos : -1;
+      }
+      const rIdx = ctx.chunkToRound.get(domPos);
+      return rIdx !== undefined ? rIdx : -1;
+    }
+
+    const domText = ctx.getCachedCleanText(turnEl);
+    const domComp = compactTextForMatch(normalizeTextForMatch(domText));
+
+    // 2. Mode-consistent stamped DOM index with non-destructive validation
     const stamped = turnEl.getAttribute('data-enhancer-dom-index');
-    if (stamped !== null) {
+    const stampedMode = turnEl.getAttribute('data-enhancer-dom-mode');
+    if (stamped !== null && (!stampedMode || stampedMode === ctx.effectiveMode)) {
       const parsed = parseInt(stamped, 10);
-      if (!isNaN(parsed)) return parsed;
+      if (!isNaN(parsed) && parsed >= 0) {
+        const candidateRoundIdx = ctx.effectiveMode === 'round' ? parsed : ctx.chunkToRound.get(parsed);
+        if (candidateRoundIdx !== undefined) {
+          const round = ctx.roundByIndex.get(candidateRoundIdx);
+          if (round) {
+            const roundCompLen = compactTextForMatch(normalizeTextForMatch(round.fullText)).length;
+            const textMatches = round.fullText && doesElementMatchText(domText, round.fullText);
+            const isAttachmentChunkInRound = ctx.effectiveMode === 'chunk' && round.hasAttachments && parsed !== round.chunkTextDomIndex && ctx.getCachedHasAttachment(turnEl);
+            const hasClearContradiction = !textMatches && !isAttachmentChunkInRound && roundCompLen >= 6 && domComp.length >= 6;
+            if (!hasClearContradiction && (textMatches || isAttachmentChunkInRound || !round.fullText)) {
+              return candidateRoundIdx;
+            }
+          }
+        }
+      }
     }
 
-    const text = getCleanPromptText(turnEl);
-    if (!text) return -1;
+    // 3. Unique / context-verified text matching across rounds
+    if (domComp.length > 0) {
+      const strictRounds = [];
+      const looseRounds = [];
 
-    for (let i = 0; i < catalogData.length; i++) {
-      const item = catalogData[i];
-      if (item.pureText && (text.includes(item.pureText) || item.pureText.includes(text))) {
-        return item.targetDomIndex !== undefined ? item.targetDomIndex : i;
+      for (const round of ctx.roundsSummary) {
+        if (!round.fullText) continue;
+        const compA = compactTextForMatch(normalizeTextForMatch(round.fullText));
+        if (!compA) continue;
+        if (domComp === compA) {
+          strictRounds.push(round.roundIndex);
+        } else if (domComp.length >= 6 && compA.length >= 6 && textsLooselyMatch(domText, round.fullText)) {
+          const ratio = Math.min(domComp.length, compA.length) / Math.max(domComp.length, compA.length);
+          const isMultiChunk = round.chunkEndDomIndex > round.chunkStartDomIndex;
+          if (ratio >= 0.45 || (isMultiChunk && compA.includes(domComp))) {
+            looseRounds.push(round.roundIndex);
+          }
+        }
       }
-      if (item.fileName && text.includes(item.fileName)) {
-        return item.targetDomIndex !== undefined ? item.targetDomIndex : i;
+
+      const candidates = strictRounds.length > 0 ? strictRounds : looseRounds;
+      if (candidates.length === 1 && (domComp.length >= 6 || !ctx.duplicateNormCounts.get(domComp) || ctx.duplicateNormCounts.get(domComp) <= 1)) {
+        return candidates[0];
+      }
+      if (candidates.length > 0) {
+        let bestRound = -1;
+        let bestScore = -Infinity;
+        let bestConflicts = Infinity;
+        let bestMatches = 0;
+
+        for (const rIdx of candidates) {
+          const round = ctx.roundByIndex.get(rIdx);
+          const expIdx = ctx.effectiveMode === 'round' ? rIdx : round.chunkTextDomIndex;
+          const sc = scoreCandidateContext(domPos, expIdx, ctx);
+          if (sc.score > bestScore || (sc.score === bestScore && sc.matches > bestMatches)) {
+            bestScore = sc.score;
+            bestMatches = sc.matches;
+            bestConflicts = sc.conflicts;
+            bestRound = rIdx;
+          }
+        }
+
+        if (bestRound !== -1 && (bestMatches > 0 || bestConflicts === 0)) {
+          return bestRound;
+        }
       }
     }
+
+    // 4. Non-default attachment filename matching
+    const matchingAttRounds = new Set();
+    for (const item of catalogData) {
+      if (item.type !== 'text' && item.fileName && !item.isDefaultName) {
+        if (matchAttachmentInTurn(turnEl, item.fileName)) {
+          matchingAttRounds.add(item.roundIndex);
+        }
+      }
+    }
+    if (matchingAttRounds.size === 1) {
+      return Array.from(matchingAttRounds)[0];
+    }
+
     return -1;
+  }
+
+  function inferVisibleRoundRange(userTurns, catalogData, ctxOpt) {
+    const ctx = ctxOpt || buildDomLookupContext(catalogData, userTurns);
+    let minRound = Infinity;
+    let maxRound = -Infinity;
+    const anchors = [];
+
+    for (let i = 0; i < userTurns.length; i++) {
+      const rIdx = inferCatalogRoundIndex(userTurns[i], catalogData, ctx, i);
+      if (rIdx !== -1) {
+        if (rIdx < minRound) minRound = rIdx;
+        if (rIdx > maxRound) maxRound = rIdx;
+        anchors.push({ domPos: i, roundIndex: rIdx });
+      }
+    }
+
+    if (anchors.length === 0) {
+      return { minRound: -1, maxRound: -1, anchors: [] };
+    }
+    return { minRound, maxRound, anchors };
+  }
+
+  function resolveRoundFromNeighbors(userTurns, targetDomPos, ctx) {
+    let bestRound = -1;
+    let bestDist = Infinity;
+
+    for (let j = 0; j < userTurns.length; j++) {
+      if (j === targetDomPos) continue;
+      const dist = Math.abs(targetDomPos - j);
+      if (dist > 3 || dist >= bestDist) continue;
+
+      const textJ = ctx.getCachedCleanText(userTurns[j]);
+      const anchorRoundIdx = inferUniqueTextRoundIndex(textJ, ctx);
+      if (anchorRoundIdx === -1) continue;
+
+      const anchorRound = ctx.roundByIndex.get(anchorRoundIdx);
+      if (!anchorRound) continue;
+
+      if (ctx.effectiveMode === 'round') {
+        const candRoundIdx = anchorRoundIdx + (targetDomPos - j);
+        if (candRoundIdx >= 0 && candRoundIdx < ctx.totalRounds) {
+          bestRound = candRoundIdx;
+          bestDist = dist;
+        }
+      } else {
+        const isSingleOrTextChunk = anchorRound.chunkStartDomIndex === anchorRound.chunkEndDomIndex ||
+          !anchorRound.hasAttachments;
+        if (!isSingleOrTextChunk && anchorRound.chunkTextDomIndex === undefined) continue;
+        const anchorChunk = anchorRound.chunkTextDomIndex;
+        const candChunk = anchorChunk + (targetDomPos - j);
+        const candRoundIdx = ctx.chunkToRound.get(candChunk);
+        if (candRoundIdx !== undefined) {
+          bestRound = candRoundIdx;
+          bestDist = dist;
+        }
+      }
+    }
+
+    return bestRound;
   }
 
   // Locate the target DOM ms-chat-turn element for a given catalog item
   function findTargetElement(catalogItem) {
     if (!catalogItem) return null;
 
-    const targetDomIndex = catalogItem.targetDomIndex !== undefined ? catalogItem.targetDomIndex : catalogItem.roundIndex;
-
-    // Tier 1: Direct stamped DOM index attribute or element ID match
-    if (targetDomIndex !== undefined) {
-      const stampedEl = document.querySelector(`ms-chat-turn[data-enhancer-dom-index="${targetDomIndex}"]`);
-      if (stampedEl) return stampedEl;
-    }
-
-    if (catalogItem.turnElementId) {
-      const el = document.getElementById(catalogItem.turnElementId);
-      if (el) return el;
-    }
-
-    const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
-    if (chatTurns.length === 0) return null;
-
-    const userTurns = [];
-    chatTurns.forEach((turn, index) => {
-      const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        userTurns.push({ element: turn, domIndex: index });
-      }
-    });
-
+    const catalogData = State.getCatalogData() || [];
+    const userTurns = getUserTurnElements();
     if (userTurns.length === 0) return null;
 
-    const totalUserChunks = catalogItem.totalUserChunks || userTurns.length;
+    const ctx = buildDomLookupContext(catalogData, userTurns);
+    const effectiveMode = ctx.effectiveMode;
+    const roundIdx = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
+    const effectiveTargetIndex = effectiveMode === 'round'
+      ? roundIdx
+      : (catalogItem.chunkTargetDomIndex !== undefined
+        ? catalogItem.chunkTargetDomIndex
+        : (catalogItem.targetDomIndex !== undefined ? catalogItem.targetDomIndex : roundIdx));
+    const effectiveTextIndex = effectiveMode === 'round'
+      ? roundIdx
+      : (catalogItem.chunkTextDomIndex !== undefined ? catalogItem.chunkTextDomIndex : effectiveTargetIndex);
 
-    // Stamp user turns with their DOM index if count matches total chunks
-    if (userTurns.length >= totalUserChunks) {
-      userTurns.forEach((u, idx) => {
-        if (!u.element.hasAttribute('data-enhancer-dom-index')) {
-          u.element.setAttribute('data-enhancer-dom-index', String(idx));
-        }
+    // Tier 0: Verified Full-DOM Fast Path (100% 1:1 positional guarantee across both Round & Chunk modes)
+    if (ctx.isFullDomPresent) {
+      userTurns.forEach((el, idx) => {
+        el.setAttribute('data-enhancer-dom-index', String(idx));
+        el.setAttribute('data-enhancer-dom-mode', effectiveMode);
       });
+      if (effectiveTargetIndex >= 0 && effectiveTargetIndex < userTurns.length) {
+        return userTurns[effectiveTargetIndex];
+      }
+      return null;
     }
 
+    // Partial / Virtualized DOM path
     const pureText = (catalogItem.pureText || '').trim();
-    const fileName = (catalogItem.fileName || '').trim();
+    const realFileName = (!catalogItem.isDefaultName && catalogItem.fileName) ? catalogItem.fileName.trim() : '';
+    const expectsAttachment = catalogItem.type !== 'text';
+    const normCompactA = compactTextForMatch(normalizeTextForMatch(pureText));
+    const normCompactLen = normCompactA.length;
+    const duplicateCount = normCompactLen > 0 ? (ctx.duplicateNormCounts.get(normCompactA) || 1) : 0;
 
-    // Tier 2: Exact full text or filename match (Strict)
-    if (pureText || fileName) {
-      const exactMatches = [];
-      userTurns.forEach((u) => {
-        const tText = getCleanPromptText(u.element);
-        if (pureText && tText === pureText) {
-          exactMatches.push(u.element);
-        } else if (fileName && tText.includes(fileName)) {
-          exactMatches.push(u.element);
+    const verifyDirectCandidate = (el) => {
+      const domPos = userTurns.indexOf(el);
+      if (domPos === -1) return false;
+      const tText = ctx.getCachedCleanText(el);
+      if (pureText && doesElementMatchText(tText, pureText)) {
+        if (effectiveMode === 'chunk' && effectiveTargetIndex !== effectiveTextIndex) {
+          return false;
         }
-      });
-
-      if (exactMatches.length === 1) {
-        return exactMatches[0];
-      } else if (exactMatches.length > 1) {
-        let best = exactMatches[0];
-        let minDiff = Infinity;
-        for (const el of exactMatches) {
-          const idx = userTurns.findIndex(u => u.element === el);
-          const diff = Math.abs(idx - (targetDomIndex || 0));
-          if (diff < minDiff) {
-            minDiff = diff;
-            best = el;
-          }
-        }
-        return best;
+        return true;
       }
-
-      // Tier 3: Substring / Prefix match (Requires minimum length >= 6 to prevent short word false positives)
-      if (pureText && pureText.length >= 6) {
-        const sample = pureText.slice(0, 40);
-        const prefixMatches = userTurns.filter((u) => {
-          const tText = getCleanPromptText(u.element);
-          if (!tText || tText.length < 6) return false;
-          return tText.startsWith(sample) || sample.startsWith(tText) || tText.includes(pureText) || pureText.includes(tText);
-        }).map(u => u.element);
-
-        if (prefixMatches.length === 1) {
-          return prefixMatches[0];
-        } else if (prefixMatches.length > 1) {
-          let best = prefixMatches[0];
-          let minDiff = Infinity;
-          for (const el of prefixMatches) {
-            const idx = userTurns.findIndex(u => u.element === el);
-            const diff = Math.abs(idx - (targetDomIndex || 0));
-            if (diff < minDiff) {
-              minDiff = diff;
-              best = el;
+      if (realFileName && matchAttachmentInTurn(el, realFileName)) {
+        return true;
+      }
+      if (effectiveMode === 'chunk' && effectiveTargetIndex !== effectiveTextIndex) {
+        const expectedTextPos = domPos + (effectiveTextIndex - effectiveTargetIndex);
+        if (expectedTextPos >= 0 && expectedTextPos < userTurns.length && pureText) {
+          const textPeer = userTurns[expectedTextPos];
+          if (doesElementMatchText(ctx.getCachedCleanText(textPeer), pureText)) {
+            if (!expectsAttachment || ctx.getCachedHasAttachment(el)) {
+              return true;
             }
           }
-          return best;
+        }
+      }
+      if (!pureText && expectsAttachment && ctx.getCachedHasAttachment(el)) {
+        const sc = scoreCandidateContext(domPos, effectiveTargetIndex, ctx);
+        if (sc.conflicts === 0 || sc.matches > 0) return true;
+      }
+      return false;
+    };
+
+    // Tier 1: Mode-consistent stamped DOM index (never delete valid stamps on weak uncertainty; only clear wrong-mode stamps)
+    if (effectiveTargetIndex !== undefined && effectiveTargetIndex >= 0) {
+      const stampedEl = document.querySelector(`ms-chat-turn[data-enhancer-dom-index="${effectiveTargetIndex}"]`);
+      if (stampedEl) {
+        const stampedMode = stampedEl.getAttribute('data-enhancer-dom-mode');
+        if (stampedMode && stampedMode !== effectiveMode) {
+          stampedEl.removeAttribute('data-enhancer-dom-index');
+          stampedEl.removeAttribute('data-enhancer-dom-mode');
+        } else if (verifyDirectCandidate(stampedEl)) {
+          return stampedEl;
         }
       }
     }
 
-    // Tier 4: Direct 1:1 physical index fallback if all user chunks are rendered in DOM
-    if (targetDomIndex !== undefined && targetDomIndex >= 0 && targetDomIndex < userTurns.length) {
-      if (userTurns.length >= totalUserChunks) {
-        return userTurns[targetDomIndex].element;
+    // Tier 1.5: Recorded element ID lookup (only when targeting start of round or matching attachment directly)
+    const idPointsToTargetChunk = effectiveMode === 'round' ||
+      catalogItem.chunkTargetDomIndex === undefined ||
+      catalogItem.chunkStartDomIndex === undefined ||
+      catalogItem.chunkTargetDomIndex === catalogItem.chunkStartDomIndex;
+    if (catalogItem.turnElementId) {
+      const idEl = document.getElementById(catalogItem.turnElementId);
+      if (idEl && (idPointsToTargetChunk || (realFileName && matchAttachmentInTurn(idEl, realFileName)))) {
+        if (verifyDirectCandidate(idEl)) {
+          return idEl;
+        }
+      }
+    }
+
+    // Tier 2A: Non-default attachment filename match (e.g. resolved img.alt or drive filename)
+    if (realFileName) {
+      const attCandidates = [];
+      for (let i = 0; i < userTurns.length; i++) {
+        if (matchAttachmentInTurn(userTurns[i], realFileName)) {
+          attCandidates.push(i);
+        }
+      }
+
+      const validAttCandidates = [];
+      for (const pos of attCandidates) {
+        const el = userTurns[pos];
+        if (effectiveMode === 'round' && pureText) {
+          const tText = ctx.getCachedCleanText(el);
+          const tCompLen = compactTextForMatch(normalizeTextForMatch(tText)).length;
+          if (normCompactLen >= 6 && tCompLen >= 6 && !doesElementMatchText(tText, pureText)) {
+            continue;
+          }
+        }
+        const sc = scoreCandidateContext(pos, effectiveTargetIndex, ctx);
+        validAttCandidates.push({ pos, sc });
+      }
+
+      if (validAttCandidates.length === 1) {
+        const { pos, sc } = validAttCandidates[0];
+        if (sc.matches > 0 || sc.conflicts === 0 || sc.score >= 0) {
+          return userTurns[pos];
+        }
+      } else if (validAttCandidates.length > 1) {
+        validAttCandidates.sort((a, b) => {
+          if (b.sc.score !== a.sc.score) return b.sc.score - a.sc.score;
+          if (b.sc.matches !== a.sc.matches) return b.sc.matches - a.sc.matches;
+          return Math.abs(a.pos - effectiveTargetIndex) - Math.abs(b.pos - effectiveTargetIndex);
+        });
+        const best = validAttCandidates[0];
+        if (best.sc.matches > 0 || best.sc.conflicts === 0) {
+          return userTurns[best.pos];
+        }
+      }
+    }
+
+    // Tier 2B & Tier 3: Normalized exact text match, then length-ratio / context-guarded loose match
+    if (normCompactLen > 0) {
+      const strictPositions = [];
+      const loosePositions = [];
+
+      for (let i = 0; i < userTurns.length; i++) {
+        const tText = ctx.getCachedCleanText(userTurns[i]);
+        const dComp = compactTextForMatch(normalizeTextForMatch(tText));
+        if (!dComp) continue;
+        if (dComp === normCompactA) {
+          strictPositions.push({ pos: i, similarity: 1 });
+        } else if (normCompactLen >= 6 && dComp.length >= 6 && textsLooselyMatch(tText, pureText)) {
+          const sim = Math.min(dComp.length, normCompactLen) / Math.max(dComp.length, normCompactLen);
+          loosePositions.push({ pos: i, similarity: sim });
+        }
+      }
+
+      const pickWinningTextPosition = (candidates, requireStrictGuard) => {
+        if (candidates.length === 0) return -1;
+        const isUniqueLong = !requireStrictGuard && normCompactLen >= 6 && duplicateCount <= 1;
+
+        const scored = candidates.map((cand) => {
+          const sc = scoreCandidateContext(cand.pos, effectiveTextIndex, ctx);
+          return { pos: cand.pos, similarity: cand.similarity, sc };
+        });
+
+        scored.sort((a, b) => {
+          if (b.sc.score !== a.sc.score) return b.sc.score - a.sc.score;
+          if (b.sc.matches !== a.sc.matches) return b.sc.matches - a.sc.matches;
+          if (Math.abs(b.similarity - a.similarity) > 0.1) return b.similarity - a.similarity;
+          return Math.abs(a.pos - effectiveTextIndex) - Math.abs(b.pos - effectiveTextIndex);
+        });
+
+        const winner = scored[0];
+        if (isUniqueLong && scored.length === 1) {
+          if (winner.sc.conflicts === 0 || winner.sc.matches > 0 || winner.sc.conflicts <= 1) {
+            return winner.pos;
+          }
+          return -1;
+        }
+
+        if (requireStrictGuard) {
+          // Reject low-overlap subset matches unless neighbor context actively confirms them
+          if (winner.similarity < 0.45 && winner.sc.matches === 0) {
+            return -1;
+          }
+        }
+
+        // For duplicate or short prompts, do not accept if neighbor context actively contradicts it
+        if (winner.sc.checkedNeighbors > 0 && winner.sc.conflicts > 0 && winner.sc.matches === 0) {
+          return -1;
+        }
+        return winner.pos;
+      };
+
+      let matchedTextPos = pickWinningTextPosition(strictPositions, false);
+      if (matchedTextPos === -1) {
+        matchedTextPos = pickWinningTextPosition(loosePositions, true);
+      }
+
+      if (matchedTextPos !== -1) {
+        if (effectiveMode === 'round' || effectiveTargetIndex === effectiveTextIndex) {
+          return userTurns[matchedTextPos];
+        }
+        const chunkOffset = effectiveTargetIndex - effectiveTextIndex;
+        const targetPos = matchedTextPos + chunkOffset;
+        if (targetPos >= 0 && targetPos < userTurns.length) {
+          const targetCandidate = userTurns[targetPos];
+          if (!expectsAttachment || ctx.getCachedHasAttachment(targetCandidate)) {
+            return targetCandidate;
+          }
+        }
+        // For turn roots whose attachment chunk sits just above the mounted viewport window, land on the matched text chunk
+        if (catalogItem.isTurnRoot && catalogItem.type === 'text') {
+          return userTurns[matchedTextPos];
+        }
+      }
+    }
+
+    // Tier 3.5: Neighbor-anchor offset projection for unnamed/attachment-only rounds inside the visible window
+    const anchors = [];
+    for (let j = 0; j < userTurns.length; j++) {
+      const tText = ctx.getCachedCleanText(userTurns[j]);
+      const aRoundIdx = inferUniqueTextRoundIndex(tText, ctx);
+      if (aRoundIdx === -1) continue;
+      const aRound = ctx.roundByIndex.get(aRoundIdx);
+      if (!aRound) continue;
+      const expIdx = effectiveMode === 'round'
+        ? aRoundIdx
+        : ((aRound.chunkStartDomIndex === aRound.chunkEndDomIndex || !aRound.hasAttachments)
+          ? aRound.chunkTextDomIndex
+          : null);
+      if (expIdx !== null && expIdx !== undefined) {
+        anchors.push({ domPos: j, expIdx, roundIndex: aRoundIdx });
+      }
+    }
+
+    if (anchors.length > 0) {
+      // First check if two anchors strictly bracket effectiveTargetIndex with contiguous spacing
+      let beforeAnchor = null;
+      let afterAnchor = null;
+      for (const a of anchors) {
+        if (a.expIdx < effectiveTargetIndex && (!beforeAnchor || a.expIdx > beforeAnchor.expIdx)) {
+          beforeAnchor = a;
+        }
+        if (a.expIdx > effectiveTargetIndex && (!afterAnchor || a.expIdx < afterAnchor.expIdx)) {
+          afterAnchor = a;
+        }
+      }
+
+      if (beforeAnchor && afterAnchor &&
+          (afterAnchor.domPos - beforeAnchor.domPos) === (afterAnchor.expIdx - beforeAnchor.expIdx)) {
+        const bracketPos = beforeAnchor.domPos + (effectiveTargetIndex - beforeAnchor.expIdx);
+        if (bracketPos >= 0 && bracketPos < userTurns.length) {
+          const candEl = userTurns[bracketPos];
+          const candOwnRound = inferUniqueTextRoundIndex(ctx.getCachedCleanText(candEl), ctx);
+          if (candOwnRound === -1 || candOwnRound === roundIdx) {
+            return candEl;
+          }
+        }
+      }
+
+      // Single close anchor within <= 3 turns
+      let closestAnchor = null;
+      let minDist = Infinity;
+      for (const a of anchors) {
+        const d = Math.abs(effectiveTargetIndex - a.expIdx);
+        if (d > 0 && d <= 3 && d < minDist) {
+          minDist = d;
+          closestAnchor = a;
+        }
+      }
+
+      if (closestAnchor) {
+        const candPos = closestAnchor.domPos + (effectiveTargetIndex - closestAnchor.expIdx);
+        if (candPos >= 0 && candPos < userTurns.length) {
+          const candEl = userTurns[candPos];
+          const candText = ctx.getCachedCleanText(candEl);
+          const candOwnRound = inferUniqueTextRoundIndex(candText, ctx);
+          if (candOwnRound === -1 || candOwnRound === roundIdx) {
+            if (!expectsAttachment || ctx.getCachedHasAttachment(candEl)) {
+              return candEl;
+            }
+          }
+        }
       }
     }
 
@@ -851,6 +1762,7 @@
   }
 
   function navigateToPrompt(target) {
+    let cleanup = null;
     try {
       const catalogData = State.getCatalogData();
       if (!catalogData || catalogData.length === 0) return;
@@ -870,7 +1782,11 @@
       const scroller = getChatScrollContainer();
       if (!scroller) return;
 
-      // 1. Cancel active animation and previous timers
+      // 1. Cancel active navigation, animation, and previous timers
+      if (activeNavigationAbort) {
+        activeNavigationAbort(true);
+        activeNavigationAbort = null;
+      }
       if (activeNavigationCancel) {
         activeNavigationCancel();
         activeNavigationCancel = null;
@@ -883,17 +1799,14 @@
         clearTimeout(navigationSafetyTimer);
         navigationSafetyTimer = null;
       }
+      if (searchSettleTimer) {
+        clearTimeout(searchSettleTimer);
+        searchSettleTimer = null;
+      }
 
       isNavigating = true;
       const clickTime = performance.now();
       const minFeedbackDurationMs = 380; // Ensure visible feedback even for short distances
-
-      // Global safety timer: ensure navigation and flight highlight ALWAYS terminates within 1000ms
-      navigationSafetyTimer = setTimeout(() => {
-        if (isNavigating) {
-          cleanup(false);
-        }
-      }, 1000);
 
       // 2. Update active highlight in the sidebar list immediately
       const list = document.getElementById(Utils.SELECTORS.id.catalogListContainer);
@@ -964,21 +1877,34 @@
         cleanup(true);
       };
 
-      const cleanup = (immediate = false) => {
+      cleanup = (immediate = false) => {
         if (navigationSafetyTimer) {
           clearTimeout(navigationSafetyTimer);
           navigationSafetyTimer = null;
+        }
+        if (searchSettleTimer) {
+          clearTimeout(searchSettleTimer);
+          searchSettleTimer = null;
         }
         clearNavigatingState(immediate);
         if (activeNavigationCancel) {
           activeNavigationCancel();
           activeNavigationCancel = null;
         }
+        activeNavigationAbort = null;
         isNavigating = false;
         window.removeEventListener('wheel', onUserInterrupt, { capture: true });
         window.removeEventListener('touchstart', onUserInterrupt, { capture: true });
         window.removeEventListener('keydown', onUserInterrupt, { capture: true });
       };
+      activeNavigationAbort = cleanup;
+
+      // Global safety timer: covers multi-hop virtual search + smooth scroll + landing stabilization
+      navigationSafetyTimer = setTimeout(() => {
+        if (isNavigating) {
+          cleanup(false);
+        }
+      }, 2600);
 
       window.addEventListener('wheel', onUserInterrupt, { capture: true, passive: true });
       window.addEventListener('touchstart', onUserInterrupt, { capture: true, passive: true });
@@ -988,30 +1914,65 @@
       const resolveSubTarget = (cardEl, item) => {
         if (!cardEl || !item) return cardEl;
         if (item.type === 'image') {
-          const imgs = Array.from(cardEl.querySelectorAll('img')).filter((img) => {
-            if (img.classList.contains('user-icon') || img.classList.contains('avatar') || (img.src && img.src.includes('googleusercontent.com/a/'))) {
-              return false;
-            }
-            return true;
+          const contentImgs = getTurnContentImages(cardEl);
+          const visibleImgs = contentImgs.filter((img) => {
+            const r = img.getBoundingClientRect();
+            return r.width > 0 || r.height > 0;
           });
+          const imgs = visibleImgs.length > 0 ? visibleImgs : contentImgs;
           if (imgs.length > 0) {
+            if (item.fileName && !item.isDefaultName) {
+              const targetLower = item.fileName.trim().toLowerCase();
+              const byName = imgs.find((img) => {
+                const alt = (img.alt || '').trim().toLowerCase();
+                const title = (img.title || '').trim().toLowerCase();
+                return (alt && (alt === targetLower || alt.includes(targetLower) || targetLower.includes(alt))) ||
+                       (title && (title === targetLower || title.includes(targetLower))) ||
+                       (img.src && !img.src.startsWith('data:') && img.src.toLowerCase().includes(targetLower));
+              });
+              if (byName) return byName;
+            }
             const idx = item.subIndex || 0;
-            return imgs[idx] || imgs[0] || cardEl;
+            if (item.chunkTargetDomIndex !== undefined && item.chunkStartDomIndex !== undefined && item.chunkTargetDomIndex > item.chunkStartDomIndex) {
+              const liveTurns = getUserTurnElements();
+              const pos = liveTurns.indexOf(cardEl);
+              if (pos !== -1) {
+                let precedingImgs = 0;
+                const maxBack = Math.min(pos, item.chunkTargetDomIndex - item.chunkStartDomIndex);
+                for (let k = 1; k <= maxBack; k++) {
+                  precedingImgs += getTurnContentImages(liveTurns[pos - k]).length;
+                }
+                const localIdx = Math.max(0, idx - precedingImgs);
+                if (imgs[localIdx]) return imgs[localIdx];
+              }
+            }
+            return imgs[idx] || imgs[imgs.length - 1] || cardEl;
           }
+        } else if (item.type === 'file' && item.fileName && !item.isDefaultName) {
+          const fileEls = Array.from(cardEl.querySelectorAll('ms-file-chunk, ms-media-chunk, [class*="file"], [class*="attachment"], [data-test-id*="file"]'));
+          const normName = normalizeTextForMatch(item.fileName);
+          const matchedChip = fileEls.find((el) => {
+            if (el.classList.contains('chat-turn-container')) return false;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return false;
+            const txt = normalizeTextForMatch(el.textContent || '');
+            return Boolean(txt && normName && txt.includes(normName));
+          });
+          if (matchedChip) return matchedChip;
         }
         return cardEl;
       };
 
       // Precision landing helper when target DOM element is available
       const landOnTarget = (targetEl) => {
-        if (!targetEl) {
+        if (!targetEl || !targetEl.isConnected) {
           cleanup(false);
           return;
         }
 
         const subTarget = resolveSubTarget(targetEl, catalogItem);
         const targetRect = subTarget.getBoundingClientRect();
-        const scrollerRect = scroller.getBoundingClientRect();
+        const scrollerRect = getScrollerViewportMetrics(scroller);
         const isAttachment = catalogItem.type === 'image' || catalogItem.type === 'file';
         const desiredTop = isAttachment
           ? Math.max(80, Math.round((scrollerRect.height - targetRect.height) / 2))
@@ -1024,6 +1985,7 @@
         // Landing Stabilization Anchor: dynamically pins the target to desiredTop
         // for up to 350ms, actively absorbing any layout shifts from async reflow, KaTeX or image loading.
         const anchorLand = () => {
+          if (!isNavigating) return;
           const anchorStartTime = performance.now();
           const anchorWindowMs = 350;
           let stableFrames = 0;
@@ -1032,14 +1994,14 @@
           const anchorTick = () => {
             if (!isNavigating) return;
 
-            const freshCard = findTargetElement(catalogItem) || targetEl;
-            if (!freshCard) {
+            const freshCard = targetEl.isConnected ? targetEl : findTargetElement(catalogItem);
+            if (!freshCard || !freshCard.isConnected) {
               cleanup(false);
               return;
             }
             const freshTarget = resolveSubTarget(freshCard, catalogItem);
             const freshRect = freshTarget.getBoundingClientRect();
-            const currentScrollerRect = scroller.getBoundingClientRect();
+            const currentScrollerRect = getScrollerViewportMetrics(scroller);
             const settleDelta = Math.round((freshRect.top - currentScrollerRect.top) - desiredTop);
 
             if (Math.abs(settleDelta) > 2) {
@@ -1088,82 +2050,129 @@
         return;
       }
 
-      // Target not in DOM yet (virtualized): smooth hydration glide towards target's estimated location
-      const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
-      const userTurns = [];
-      chatTurns.forEach((turn, index) => {
-        const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-        if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-          userTurns.push(turn);
-        }
-      });
+      // Target not in DOM yet (virtualized): adaptive proportional hydration search across rendered round anchors
+      const maxSearchHops = 3;
+      const targetRound = catalogItem.roundIndex !== undefined ? catalogItem.roundIndex : 0;
+      const totalRounds = catalogItem.totalRounds || new Set(catalogData.map(i => i.roundIndex)).size || 1;
 
-      let scrollUp = true;
-      if (userTurns.length > 0) {
-        const firstVisibleDomIdx = inferCatalogIndex(userTurns[0], catalogData);
-        const targetDom = catalogItem.targetDomIndex !== undefined ? catalogItem.targetDomIndex : (catalogItem.roundIndex || 0);
-        if (firstVisibleDomIdx !== -1) {
-          scrollUp = targetDom < firstVisibleDomIdx;
+      const runSearchHop = (hop) => {
+        if (!isNavigating) return;
+
+        const quickFound = findTargetElement(catalogItem);
+        if (quickFound) {
+          landOnTarget(quickFound);
+          return;
+        }
+
+        const liveTurns = getUserTurnElements();
+        const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const currentTop = scroller.scrollTop;
+
+        if (hop > maxSearchHops || maxScroll <= 0) {
+          cleanup(false);
+          return;
+        }
+
+        const visRange = inferVisibleRoundRange(liveTurns, catalogData);
+        let searchTarget;
+
+        if (visRange.minRound !== -1 && visRange.maxRound !== -1) {
+          if (targetRound < visRange.minRound) {
+            if (hop === maxSearchHops || targetRound === 0 || visRange.minRound === 0) {
+              searchTarget = 0;
+            } else {
+              const est = Math.round(currentTop * (targetRound / Math.max(1, visRange.minRound)));
+              searchTarget = Math.min(Math.max(0, currentTop - 160), est);
+            }
+          } else if (targetRound > visRange.maxRound) {
+            const lastRound = Math.max(1, totalRounds - 1);
+            if (hop === maxSearchHops || targetRound >= lastRound || visRange.maxRound >= lastRound) {
+              searchTarget = maxScroll;
+            } else {
+              const span = Math.max(1, lastRound - visRange.maxRound);
+              const ratio = Math.min(1, (targetRound - visRange.maxRound) / span);
+              const est = Math.round(currentTop + (maxScroll - currentTop) * ratio);
+              searchTarget = Math.max(Math.min(maxScroll, currentTop + 160), est);
+            }
+          } else {
+            // Target round lies inside visible round span (e.g., off-edge chunk of same round); nudge in chunk direction
+            const nudge = catalogItem.chunkTargetDomIndex !== undefined &&
+              catalogItem.chunkTextDomIndex !== undefined &&
+              catalogItem.chunkTargetDomIndex < catalogItem.chunkTextDomIndex ? -400 : 400;
+            searchTarget = currentTop + nudge;
+          }
         } else {
-          scrollUp = scroller.scrollTop > 300;
+          // None of the visible turns resolved uniquely: aim by global round ratio (never default blindly to 0)
+          const ratio = totalRounds > 1 ? (targetRound / (totalRounds - 1)) : 0;
+          searchTarget = Math.round(maxScroll * ratio);
         }
-      } else {
-        scrollUp = scroller.scrollTop > 300;
-      }
 
-      const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-      const searchTarget = scrollUp ? 0 : maxScroll;
-      const searchDistance = Math.abs(searchTarget - scroller.scrollTop);
-      const searchDuration = Math.min(650, Math.max(320, Math.round(240 + Math.sqrt(searchDistance) * 4.5)));
+        searchTarget = Math.max(0, Math.min(maxScroll, searchTarget));
+        const searchDistance = Math.abs(searchTarget - currentTop);
+        const searchDuration = Math.min(550, Math.max(220, Math.round(180 + Math.sqrt(searchDistance) * 3.8)));
 
-      let frameCount = 0;
-      const startTop = scroller.scrollTop;
-      const searchDelta = searchTarget - startTop;
-      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-      const searchStartTime = performance.now();
-      let searchRafId = null;
+        let frameCount = 0;
+        const startTop = currentTop;
+        const searchDelta = searchTarget - startTop;
+        const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+        const searchStartTime = performance.now();
+        let searchRafId = null;
 
-      const searchStep = (currentTime) => {
-        frameCount++;
-        const elapsed = currentTime - searchStartTime;
-        const progress = Math.min(1, elapsed / searchDuration);
-        const easedProgress = easeOutCubic(progress);
+        const searchStep = (currentTime) => {
+          if (!isNavigating) return;
+          frameCount++;
+          const elapsed = currentTime - searchStartTime;
+          const progress = searchDistance < 2 ? 1 : Math.min(1, elapsed / searchDuration);
+          const easedProgress = easeOutCubic(progress);
 
-        scroller.scrollTop = Math.round(startTop + searchDelta * easedProgress);
+          scroller.scrollTop = Math.round(startTop + searchDelta * easedProgress);
 
-        // Check every 4 frames (~60ms) if target element has been hydrated into DOM
-        if (frameCount % 4 === 0) {
-          const foundEl = findTargetElement(catalogItem);
-          if (foundEl) {
+          // Check every 3 frames (~50ms) if target element has hydrated into DOM
+          if (frameCount % 3 === 0 || progress >= 1) {
+            const foundEl = findTargetElement(catalogItem);
+            if (foundEl) {
+              if (searchRafId !== null) {
+                cancelAnimationFrame(searchRafId);
+                searchRafId = null;
+              }
+              landOnTarget(foundEl);
+              return;
+            }
+          }
+
+          if (progress < 1) {
+            searchRafId = requestAnimationFrame(searchStep);
+          } else {
+            searchRafId = null;
+            searchSettleTimer = setTimeout(() => {
+              searchSettleTimer = null;
+              if (!isNavigating) return;
+              const settledEl = findTargetElement(catalogItem);
+              if (settledEl) {
+                landOnTarget(settledEl);
+              } else if (hop < maxSearchHops) {
+                runSearchHop(hop + 1);
+              } else {
+                cleanup(false);
+              }
+            }, 85);
+          }
+        };
+
+        searchRafId = requestAnimationFrame(searchStep);
+        activeNavigationCancel = () => {
+          if (searchRafId !== null) {
             cancelAnimationFrame(searchRafId);
             searchRafId = null;
-            landOnTarget(foundEl);
-            return;
           }
-        }
-
-        if (progress < 1) {
-          searchRafId = requestAnimationFrame(searchStep);
-        } else {
-          // Final check after boundary arrival
-          setTimeout(() => {
-            const finalFound = findTargetElement(catalogItem);
-            if (finalFound) {
-              landOnTarget(finalFound);
-            } else {
-              cleanup(false);
-            }
-          }, 80);
-        }
+          if (searchSettleTimer) {
+            clearTimeout(searchSettleTimer);
+            searchSettleTimer = null;
+          }
+        };
       };
 
-      searchRafId = requestAnimationFrame(searchStep);
-      activeNavigationCancel = () => {
-        if (searchRafId !== null) {
-          cancelAnimationFrame(searchRafId);
-          searchRafId = null;
-        }
-      };
+      runSearchHop(1);
     } catch (error) {
       console.error('Error during navigation:', error);
       if (typeof cleanup === 'function') {
@@ -1177,6 +2186,10 @@
       const scroller = getChatScrollContainer();
       if (!scroller) return;
 
+      if (activeNavigationAbort) {
+        activeNavigationAbort(true);
+        activeNavigationAbort = null;
+      }
       if (activeNavigationCancel) {
         activeNavigationCancel();
         activeNavigationCancel = null;
@@ -1260,69 +2273,42 @@
     const scroller = getChatScrollContainer();
     if (!scroller) return;
 
-    const chatTurns = Array.from(document.querySelectorAll(Utils.SELECTORS.query.chatTurn));
-    const userTurns = chatTurns.filter((turn) => {
-      const container = turn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      return container && container.classList.contains(Utils.SELECTORS.class.userTurn);
-    });
-
+    const userTurns = getUserTurnElements();
     if (userTurns.length === 0) return;
 
-    const scrollerRect = scroller.getBoundingClientRect();
+    const catalogData = State.getCatalogData();
+    if (!catalogData || catalogData.length === 0) return;
+
+    const scrollerRect = getScrollerViewportMetrics(scroller);
     let activeTurnEl = null;
-    let activeTurnDomIndex = 0;
+    let activeTurnPos = 0;
 
     for (let i = 0; i < userTurns.length; i++) {
       const rect = userTurns[i].getBoundingClientRect();
       if (rect.top <= scrollerRect.top + 250) {
         activeTurnEl = userTurns[i];
-        activeTurnDomIndex = i;
+        activeTurnPos = i;
       } else {
         break;
       }
     }
 
-    if (!activeTurnEl && userTurns.length > 0) {
+    if (!activeTurnEl) {
       activeTurnEl = userTurns[0];
-      activeTurnDomIndex = 0;
-    }
-    if (!activeTurnEl) return;
-
-    const catalogData = State.getCatalogData();
-    if (!catalogData || catalogData.length === 0) return;
-
-    // 1. Try stamped DOM index or active DOM turn index
-    let domIndex = activeTurnDomIndex;
-    const stamped = activeTurnEl.getAttribute('data-enhancer-dom-index');
-    if (stamped !== null) {
-      const parsed = parseInt(stamped, 10);
-      if (!isNaN(parsed)) {
-        domIndex = parsed;
-      }
+      activeTurnPos = 0;
     }
 
-    // Find the catalog item whose round covers this domIndex (startDomIndex <= domIndex <= endDomIndex)
-    let found = catalogData.find(item =>
-      item.startDomIndex !== undefined &&
-      item.endDomIndex !== undefined &&
-      item.startDomIndex <= domIndex &&
-      domIndex <= item.endDomIndex &&
-      item.isTurnRoot
-    );
+    const ctx = buildDomLookupContext(catalogData, userTurns);
+    let activeRoundIdx = inferCatalogRoundIndex(activeTurnEl, catalogData, ctx, activeTurnPos);
 
-    if (!found) {
-      found = catalogData.find(item => item.targetDomIndex === domIndex);
+    if (activeRoundIdx === -1) {
+      activeRoundIdx = resolveRoundFromNeighbors(userTurns, activeTurnPos, ctx);
     }
 
-    // 2. Fallback content matching
-    if (!found) {
-      const cleanText = getCleanPromptText(activeTurnEl);
-      if (cleanText) {
-        found = catalogData.find(item =>
-          (item.pureText && cleanText.includes(item.pureText)) ||
-          (item.fileName && cleanText.includes(item.fileName))
-        );
-      }
+    let found = null;
+    if (activeRoundIdx !== -1) {
+      found = catalogData.find(item => item.roundIndex === activeRoundIdx && item.isTurnRoot) ||
+              catalogData.find(item => item.roundIndex === activeRoundIdx);
     }
 
     if (found) {
@@ -1331,11 +2317,10 @@
   }
 
   function setupScrollSpy() {
-    if (scrollSpyBound) return;
     const scroller = getChatScrollContainer();
-    if (!scroller) return;
+    if (!scroller || boundScrollers.has(scroller)) return;
 
-    scrollSpyBound = true;
+    boundScrollers.add(scroller);
     let scrollTimer = null;
     scroller.addEventListener('scroll', () => {
       if (scrollTimer) clearTimeout(scrollTimer);
