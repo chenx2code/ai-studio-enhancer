@@ -2440,32 +2440,38 @@
     const content = document.createElement('div');
     content.className = 'catalog-item-content';
 
-    const textSpan = document.createElement('span');
-    textSpan.className = 'catalog-prompt-text';
-
     if (catalogItem.type === 'text') {
+      const textSpan = document.createElement('span');
+      textSpan.className = 'catalog-prompt-text';
       textSpan.textContent = catalogItem.promptText;
       textSpan.title = catalogItem.promptText;
+      content.appendChild(textSpan);
     } else {
       const category = catalogItem.fileCategory || 'file';
       const fileType = catalogItem.fileType || 'File';
       const fileName = catalogItem.fileName || fileType;
 
+      const attRow = document.createElement('div');
+      attRow.className = 'catalog-attachment-row';
+      attRow.title = `[${fileType}] ${fileName}`;
+
       const iconSpan = document.createElement('span');
       iconSpan.className = `catalog-inline-icon catalog-icon-${category}`;
       iconSpan.innerHTML = getAttachmentIconSvg(category);
-      textSpan.appendChild(iconSpan);
+      attRow.appendChild(iconSpan);
 
       const tagSpan = document.createElement('span');
       tagSpan.className = `catalog-type-tag catalog-type-tag-${category}`;
       tagSpan.textContent = `[${fileType}]`;
-      textSpan.appendChild(tagSpan);
+      attRow.appendChild(tagSpan);
 
-      textSpan.appendChild(document.createTextNode(' ' + fileName));
-      textSpan.title = `[${fileType}] ${fileName}`;
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'catalog-attachment-name';
+      nameSpan.textContent = fileName;
+      attRow.appendChild(nameSpan);
+
+      content.appendChild(attRow);
     }
-
-    content.appendChild(textSpan);
     listItem.appendChild(content);
 
     listItem.addEventListener('click', function () {
