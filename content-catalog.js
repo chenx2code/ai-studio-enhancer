@@ -4,6 +4,7 @@
 
   const State = global.__AIStudioEnhancer__.State;
   const Utils = global.__AIStudioEnhancer__.Utils;
+  const Attachments = global.__AIStudioEnhancer__.Attachments;
 
   let catalogVisible = false;
   let scrollStopTimer = null;
@@ -13,8 +14,6 @@
 
   const boundScrollers = new WeakSet();
   const attachmentCache = new Map();
-
-  const detectFileCategory = Utils.detectFileCategory;
 
   // Get SVG markup for a given attachment category
   function getAttachmentIconSvg(category) {
@@ -43,20 +42,11 @@
     }
   }
 
-  const extractImageInfo = Utils.extractImageInfo;
-  const extractRoundAttachments = Utils.extractRoundAttachments;
+  const extractRoundAttachments = Attachments.extractRoundAttachments;
 
   // Query all currently rendered user chat turn DOM elements
   function getUserTurnElements() {
-    const result = [];
-    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-    for (const chatTurn of chatTurns) {
-      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        result.push(chatTurn);
-      }
-    }
-    return result;
+    return typeof Utils.getUserTurnElements === 'function' ? Utils.getUserTurnElements() : [];
   }
 
   // Extract visible prompt text from a chat turn element while skipping UI buttons/icons, attachments, and token counters
@@ -177,17 +167,12 @@
 
   function getTurnContentImages(turnEl) {
     if (!turnEl) return [];
-    return Array.from(turnEl.querySelectorAll('img')).filter((img) => {
-      if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
-      if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
-      if (img.alt && img.alt.trim().toLowerCase() === 'thinking') return false;
-      return true;
-    });
+    return Array.from(turnEl.querySelectorAll('img')).filter(Utils.isTurnContentImage);
   }
 
   function getTurnContentFiles(turnEl) {
-    if (!turnEl || typeof Utils.getTurnFileElements !== 'function') return [];
-    return Utils.getTurnFileElements(turnEl);
+    if (!turnEl || !Attachments || typeof Attachments.getTurnFileElements !== 'function') return [];
+    return Attachments.getTurnFileElements(turnEl);
   }
 
   function getTurnContentVideos(turnEl) {
@@ -233,8 +218,8 @@
     if (!normTarget) return false;
 
     const candidates = [];
-    if (typeof Utils.extractFileInfo === 'function') {
-      const info = Utils.extractFileInfo(fileEl, 0, 1);
+    if (Attachments && typeof Attachments.extractFileInfo === 'function') {
+      const info = Attachments.extractFileInfo(fileEl, 0, 1);
       if (info && !info.isDefaultName && info.fileName) {
         candidates.push(info.fileName);
       }
@@ -916,11 +901,11 @@
   }
 
   function applyDriveResolvedToCatalogItem(item, driveRec, defaultFileWord) {
-    if (!item || !driveRec || typeof Utils.resolveAttachmentFromDriveMetadata !== 'function') {
+    if (!item || !driveRec || !Attachments || typeof Attachments.resolveAttachmentFromDriveMetadata !== 'function') {
       return false;
     }
     const isImage = item.type === 'image';
-    const resolved = Utils.resolveAttachmentFromDriveMetadata(driveRec, isImage ? 'image' : 'file');
+    const resolved = Attachments.resolveAttachmentFromDriveMetadata(driveRec, isImage ? 'image' : 'file');
     if (!resolved) return false;
 
     const driveRank = typeof driveRec.s === 'number' ? driveRec.s : 1;
@@ -1060,12 +1045,7 @@
 
     const liveImages = Array.from(
       document.querySelectorAll('.chat-turn-container.user img')
-    ).filter(img => {
-      if (img.classList && (img.classList.contains('user-icon') || img.classList.contains('avatar'))) return false;
-      if (img.src && (img.src.includes('googleusercontent.com/a/') || img.src.includes('watermark.png'))) return false;
-      if (img.alt && img.alt.trim().toLowerCase() === 'thinking') return false;
-      return true;
-    });
+    ).filter(Utils.isTurnContentImage);
 
     const liveFiles = [];
     document.querySelectorAll('.chat-turn-container.user').forEach((userCont) => {
@@ -1219,8 +1199,8 @@
 
         if (targetEl) {
           const info = isImage
-            ? Utils.extractImageInfo(targetEl, subIdx, roundTotalCount)
-            : Utils.extractFileInfo(targetEl, subIdx, roundTotalCount);
+            ? Attachments.extractImageInfo(targetEl, subIdx, roundTotalCount)
+            : Attachments.extractFileInfo(targetEl, subIdx, roundTotalCount);
           const infoImprovesItem = !info.isDefaultName && info.fileName && (
             item.isDefaultName ||
             (!info.isTruncatedName && info.fileType !== 'FILE') ||

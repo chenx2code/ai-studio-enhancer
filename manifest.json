@@ -20,6 +20,7 @@
       "js": [
         "content-utils.js",
         "content-state.js",
+        "content-attachments.js",
         "content-markdown.js",
         "content-obsidian.js",
         "content-catalog.js",
