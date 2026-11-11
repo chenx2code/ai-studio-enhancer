@@ -445,8 +445,14 @@ body[data-theme="dark"],
   color: var(--catalog-text-secondary);
 }
 
-/* Next root item following an attachment gets comfortable section separation */
+/* Next root turn following an attachment gets comfortable section separation */
+.catalog-list-item.catalog-item-sub + .catalog-list-item.catalog-item-turn-root,
 .catalog-list-item.catalog-item-sub + .catalog-list-item:not(.catalog-item-sub) {
+  margin-top: 8px;
+}
+
+/* Next pure-attachment root turn following a prompt text gets comfortable section separation */
+.catalog-list-item:not(.catalog-item-sub) + .catalog-list-item.catalog-item-turn-root.catalog-item-sub {
   margin-top: 8px;
 }
 

@@ -1188,6 +1188,7 @@
     listItem.setAttribute('tabindex', '0');
     if (catalogItem.isTurnRoot) {
       listItem.setAttribute('data-is-turn-root', 'true');
+      listItem.classList.add('catalog-item-turn-root');
     }
 
     // 1. Leading Slot: Turn Number Badge (for turn root) or blank indentation spacer (for attachments)
