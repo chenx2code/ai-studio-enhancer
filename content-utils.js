@@ -151,6 +151,155 @@
     return /^(application|text|audio|video|image|multipart|model)\/[a-zA-Z0-9.+_-]+$/i.test(trimmed);
   }
 
+  function isLikelyDriveFileId(str) {
+    if (!str || typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    if (!trimmed || trimmed.length < 18 || trimmed.length > 80) return false;
+    if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) return false;
+    return /[A-Za-z]/.test(trimmed) && /[0-9]/.test(trimmed);
+  }
+
+  function getDriveRecordFromState(driveId) {
+    if (!driveId || typeof driveId !== 'string') return null;
+    const enhancer = global.__AIStudioEnhancer__;
+    const State = enhancer && enhancer.State;
+    if (!State || typeof State.getDriveMetadata !== 'function') return null;
+    return State.getDriveMetadata(driveId) || null;
+  }
+
+  function extractDriveFileIdFromSlot(slot) {
+    if (!slot) return '';
+    const enhancer = global.__AIStudioEnhancer__;
+    const State = enhancer && enhancer.State;
+    const hasLookup = Boolean(State && typeof State.getDriveMetadata === 'function');
+    const candidates = [];
+
+    const walk = (node, depth) => {
+      if (depth > 3 || node === null || node === undefined) return;
+      if (typeof node === 'string') {
+        const trimmed = node.trim();
+        if (trimmed) candidates.push(trimmed);
+        return;
+      }
+      if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) {
+          walk(node[i], depth + 1);
+        }
+      }
+    };
+
+    walk(slot, 0);
+
+    // Prefer exact hit already stored in State Drive metadata cache
+    if (hasLookup) {
+      for (let i = 0; i < candidates.length; i++) {
+        if (State.getDriveMetadata(candidates[i])) {
+          return candidates[i];
+        }
+      }
+    }
+
+    // Prefer mixed-case Drive File IDs first, then any valid Drive ID morphology
+    let fallbackId = '';
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      if (!isLikelyDriveFileId(c)) continue;
+      if (/[A-Z]/.test(c) && /[a-z]/.test(c) && c.length >= 25) {
+        return c;
+      }
+      if (!fallbackId) {
+        fallbackId = c;
+      }
+    }
+
+    return fallbackId;
+  }
+
+  function resolveAttachmentFromDriveMetadata(driveRec, attachmentType, fallbackFileName) {
+    if (!driveRec || typeof driveRec !== 'object') {
+      return null;
+    }
+
+    const rawName = typeof driveRec.n === 'string'
+      ? driveRec.n.trim()
+      : (typeof driveRec.name === 'string' ? driveRec.name.trim() : '');
+    const rawMime = typeof driveRec.m === 'string'
+      ? driveRec.m.trim()
+      : (typeof driveRec.mimeType === 'string' ? driveRec.mimeType.trim() : '');
+    const rawExt = (typeof driveRec.e === 'string'
+      ? driveRec.e.trim()
+      : (typeof driveRec.fileExtension === 'string' ? driveRec.fileExtension.trim() : '')).replace(/^\./, '');
+    const sourceRank = typeof driveRec.s === 'number' ? driveRec.s : 1;
+    const isTruncated = Boolean(rawName && /(\.\.\.|\u2026)$/.test(rawName));
+
+    if (attachmentType === 'image') {
+      let imgType = 'IMG';
+      if (rawName && !isTruncated) {
+        const extMatch = rawName.match(/\.([a-zA-Z0-9]{1,8})$/);
+        if (extMatch) {
+          imgType = extMatch[1].toUpperCase();
+        }
+      }
+      if (imgType === 'IMG' && rawMime && rawMime.toLowerCase().startsWith('image/')) {
+        const sub = rawMime.split('/')[1].split('+')[0].replace(/^x-/i, '').toUpperCase();
+        if (sub && sub.length <= 6 && sub !== '*') {
+          imgType = sub;
+        }
+      }
+      return {
+        fileName: rawName || (fallbackFileName || ''),
+        fileType: imgType,
+        fileCategory: 'image',
+        friendlyType: 'Image',
+        isDefaultName: !rawName,
+        isTruncatedName: isTruncated,
+        hasExplicitType: Boolean(rawName),
+        sourceRank: sourceRank
+      };
+    }
+
+    const validMime = rawMime && rawMime.toLowerCase() !== 'application/octet-stream' ? rawMime : '';
+    const extMatch = (!isTruncated && rawName)
+      ? rawName.match(/\.([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9})$/)
+      : null;
+
+    let friendlyType = 'File';
+    let fileType = 'FILE';
+    let fileCategory = 'file';
+
+    if (extMatch) {
+      fileType = extMatch[1].toUpperCase();
+      friendlyType = getFriendlyFileType(rawName);
+      fileCategory = detectFileCategory(fileType, rawName, false);
+    } else if (validMime) {
+      friendlyType = getFriendlyFileType(validMime);
+      fileType = friendlyTypeToTag(friendlyType, validMime);
+      const isFolder = fileType === 'FOLDER' || validMime.toLowerCase().includes('folder');
+      fileCategory = detectFileCategory(fileType, validMime, isFolder);
+    } else if (!isTruncated && rawExt && /^[a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9}$/.test(rawExt)) {
+      fileType = rawExt.toUpperCase();
+      friendlyType = getFriendlyFileType('.' + rawExt);
+      fileCategory = detectFileCategory(fileType, '.' + rawExt, false);
+    } else if (rawName && !isTruncated && /\bfolder\b/i.test(rawName)) {
+      fileType = 'FOLDER';
+      friendlyType = 'Folder';
+      fileCategory = 'folder';
+    } else if (rawMime) {
+      friendlyType = getFriendlyFileType(rawMime);
+    }
+
+    return {
+      fileName: rawName || (fallbackFileName || ''),
+      fileType: fileType,
+      fileCategory: fileCategory,
+      friendlyType: friendlyType,
+      isDefaultName: !rawName,
+      isTruncatedName: isTruncated,
+      hasExplicitType: fileType !== 'FILE',
+      sourceRank: sourceRank
+    };
+  }
+
   function inferFileMetadataFromApiSlot(slotArray) {
     const result = {
       fileType: 'FILE',
@@ -158,7 +307,10 @@
       fileName: '',
       friendlyType: 'File',
       isDefaultName: true,
-      hasExplicitType: false
+      isTruncatedName: false,
+      hasExplicitType: false,
+      driveFileId: '',
+      sourceRank: 0
     };
     if (!Array.isArray(slotArray) || slotArray.length === 0) return result;
 
@@ -191,6 +343,39 @@
 
     visit(slotArray, 0);
 
+    const driveFileId = extractDriveFileIdFromSlot(slotArray);
+    if (driveFileId) {
+      result.driveFileId = driveFileId;
+    }
+
+    const driveRec = driveFileId ? getDriveRecordFromState(driveFileId) : null;
+    const driveMeta = driveRec ? resolveAttachmentFromDriveMetadata(driveRec, 'file') : null;
+
+    // Prefer non-truncated cached Drive metadata when available, or authoritative drive_api metadata
+    if (driveMeta && driveMeta.fileName && (!driveMeta.isTruncatedName || !detectedName)) {
+      result.fileName = driveMeta.fileName;
+      result.fileType = driveMeta.fileType;
+      result.friendlyType = driveMeta.friendlyType;
+      result.fileCategory = driveMeta.fileCategory;
+      result.isDefaultName = false;
+      result.isTruncatedName = Boolean(driveMeta.isTruncatedName);
+      result.hasExplicitType = driveMeta.hasExplicitType;
+      result.sourceRank = driveMeta.sourceRank || 0;
+
+      if (result.fileType === 'FILE' && detectedMime) {
+        const friendly = getFriendlyFileType(detectedMime);
+        const tag = friendlyTypeToTag(friendly, detectedMime);
+        const isFolder = tag === 'FOLDER' || detectedMime.toLowerCase().includes('folder');
+        if (tag !== 'FILE') {
+          result.friendlyType = friendly;
+          result.fileType = tag;
+          result.fileCategory = detectFileCategory(tag, detectedMime, isFolder);
+          result.hasExplicitType = true;
+        }
+      }
+      return result;
+    }
+
     if (detectedName) {
       const extMatch = detectedName.match(/\.([a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]{0,9})$/);
       const tag = extMatch ? extMatch[1].toUpperCase() : 'FILE';
@@ -203,14 +388,16 @@
       return result;
     }
 
-    if (detectedMime) {
-      const friendly = getFriendlyFileType(detectedMime);
-      const tag = friendlyTypeToTag(friendly, detectedMime);
-      const isFolder = tag === 'FOLDER' || detectedMime.toLowerCase().includes('folder');
+    const effectiveMime = detectedMime || (driveRec && driveRec.m ? driveRec.m : '');
+    if (effectiveMime && effectiveMime.toLowerCase() !== 'application/octet-stream') {
+      const friendly = getFriendlyFileType(effectiveMime);
+      const tag = friendlyTypeToTag(friendly, effectiveMime);
+      const isFolder = tag === 'FOLDER' || effectiveMime.toLowerCase().includes('folder');
       result.friendlyType = friendly;
       result.fileType = tag;
-      result.fileCategory = detectFileCategory(tag, detectedMime, isFolder);
+      result.fileCategory = detectFileCategory(tag, effectiveMime, isFolder);
       result.hasExplicitType = tag !== 'FILE';
+      result.sourceRank = driveMeta ? (driveMeta.sourceRank || 0) : 0;
       return result;
     }
 
@@ -227,6 +414,13 @@
     const docContent = turn[23]; // Normal files
 
     if (imageContent && Array.isArray(imageContent) && imageContent.length > 0) {
+      if (imageContent.length === 1) {
+        const driveId = extractDriveFileIdFromSlot(imageContent[0]);
+        const driveRec = driveId ? getDriveRecordFromState(driveId) : null;
+        if (driveRec && driveRec.n) {
+          return { text: `[${driveRec.n}]`, type: 'image' };
+        }
+      }
       return { text: '[Image]', type: 'image' };
     }
     
@@ -1000,12 +1194,17 @@
       const imageContent = turn[1];
       const inlineContent = turn[12];
       if (Array.isArray(imageContent) && imageContent.length > 0) {
-        imageContent.forEach((_, subIdx) => {
-          apiImages.push({ index, domIndex, subIdx });
+        imageContent.forEach((slotItem, subIdx) => {
+          apiImages.push({
+            index,
+            domIndex,
+            subIdx,
+            driveFileId: extractDriveFileIdFromSlot(slotItem)
+          });
         });
       } else if (Array.isArray(inlineContent) && inlineContent.length > 0) {
         if (typeof inlineContent[0] === 'string' && (inlineContent[0].startsWith('image/') || inlineContent[0].includes('OMITTED'))) {
-          apiImages.push({ index, domIndex, subIdx: 0 });
+          apiImages.push({ index, domIndex, subIdx: 0, driveFileId: '' });
         }
       }
     });
@@ -1026,29 +1225,57 @@
           matchedDomIdx = domImages.findIndex((_, i) => !usedDomImgs.has(i));
         }
 
+        const fallbackLabel = totalImages > 1 ? `${defaultWord} ${slotIdx + 1}` : defaultWord;
+        const driveRec = apiImg.driveFileId ? getDriveRecordFromState(apiImg.driveFileId) : null;
+        const driveImgMeta = driveRec ? resolveAttachmentFromDriveMetadata(driveRec, 'image', fallbackLabel) : null;
+
         if (matchedDomIdx !== -1) {
           usedDomImgs.add(matchedDomIdx);
           const { img } = domImages[matchedDomIdx];
           const info = extractImageInfo(img, slotIdx, totalImages);
+          let finalImgName = info.fileName;
+          let finalImgType = info.fileType;
+          let finalImgDefault = info.isDefaultName;
+          let finalImgTruncated = Boolean(info.isTruncatedName);
+
+          const canApplyDriveImg = Boolean(
+            driveImgMeta &&
+            !driveImgMeta.isDefaultName &&
+            driveImgMeta.fileName && (
+              info.isDefaultName ||
+              (finalImgTruncated && !driveImgMeta.isTruncatedName) ||
+              (!driveImgMeta.isTruncatedName && (driveImgMeta.sourceRank || 0) >= 3)
+            )
+          );
+          if (canApplyDriveImg) {
+            finalImgName = driveImgMeta.fileName;
+            finalImgType = driveImgMeta.fileType || 'IMG';
+            finalImgDefault = false;
+            finalImgTruncated = Boolean(driveImgMeta.isTruncatedName);
+          }
+
           attachments.push({
             type: 'image',
             fileCategory: 'image',
-            fileType: info.fileType,
-            fileName: info.fileName,
-            isDefaultName: info.isDefaultName,
-            isTruncatedName: false,
+            fileType: finalImgType,
+            fileName: finalImgName,
+            isDefaultName: finalImgDefault,
+            isTruncatedName: finalImgTruncated,
+            driveFileId: apiImg.driveFileId || '',
             domIndex: apiImg.domIndex,
             subIndex: slotIdx,
             turnIndex: apiImg.index
           });
         } else {
+          const useDriveImg = Boolean(driveImgMeta && !driveImgMeta.isDefaultName && driveImgMeta.fileName);
           attachments.push({
             type: 'image',
             fileCategory: 'image',
-            fileType: 'IMG',
-            fileName: totalImages > 1 ? `${defaultWord} ${slotIdx + 1}` : defaultWord,
-            isDefaultName: true,
-            isTruncatedName: false,
+            fileType: useDriveImg ? (driveImgMeta.fileType || 'IMG') : 'IMG',
+            fileName: useDriveImg ? driveImgMeta.fileName : fallbackLabel,
+            isDefaultName: !useDriveImg,
+            isTruncatedName: useDriveImg ? Boolean(driveImgMeta.isTruncatedName) : false,
+            driveFileId: apiImg.driveFileId || '',
             domIndex: apiImg.domIndex,
             subIndex: slotIdx,
             turnIndex: apiImg.index
@@ -1070,6 +1297,7 @@
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
           isTruncatedName: false,
+          driveFileId: '',
           domIndex: domIndex,
           subIndex: slotIdx,
           turnIndex: turnIndex
@@ -1087,6 +1315,7 @@
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
           isTruncatedName: false,
+          driveFileId: '',
           domIndex: domIndex,
           subIndex: idx,
           turnIndex: turnIndex
@@ -1186,19 +1415,25 @@
           let finalIsDefault = info.isDefaultName;
           let finalIsTruncated = info.isTruncatedName;
 
-          if (info.isDefaultName) {
-            if (meta.fileName) {
-              finalName = meta.fileName;
-              finalType = meta.fileType;
-              finalCategory = meta.fileCategory;
-              finalIsDefault = false;
-              finalIsTruncated = false;
-            } else if (meta.hasExplicitType) {
-              finalType = meta.fileType;
-              finalCategory = meta.fileCategory;
-              if (meta.friendlyType && meta.friendlyType !== 'File') {
-                finalName = `${meta.friendlyType} ${defaultFileWord}`;
-              }
+          const shouldPreferMetaName = Boolean(
+            meta.fileName && (
+              info.isDefaultName ||
+              (info.isTruncatedName && !meta.isTruncatedName) ||
+              ((meta.sourceRank || 0) >= 3 && !meta.isTruncatedName)
+            )
+          );
+
+          if (shouldPreferMetaName) {
+            finalName = meta.fileName;
+            finalType = meta.fileType;
+            finalCategory = meta.fileCategory;
+            finalIsDefault = false;
+            finalIsTruncated = Boolean(meta.isTruncatedName);
+          } else if (info.isDefaultName && meta.hasExplicitType) {
+            finalType = meta.fileType;
+            finalCategory = meta.fileCategory;
+            if (meta.friendlyType && meta.friendlyType !== 'File') {
+              finalName = `${meta.friendlyType} ${defaultFileWord}`;
             }
           } else if (finalType === 'FILE' && finalCategory === 'file' && meta.hasExplicitType) {
             finalType = meta.fileType;
@@ -1212,16 +1447,22 @@
             fileName: finalName,
             isDefaultName: finalIsDefault,
             isTruncatedName: finalIsTruncated,
+            driveFileId: meta.driveFileId || '',
             domIndex: apiFile.domIndex,
             subIndex: fileSlotIdx,
             turnIndex: apiFile.index
           });
         } else {
           let fallbackName = slotFallbackName;
+          let fallbackDefault = true;
+          let fallbackTruncated = false;
           if (meta.fileName) {
             fallbackName = meta.fileName;
+            fallbackDefault = false;
+            fallbackTruncated = Boolean(meta.isTruncatedName);
           } else if (meta.hasExplicitType && meta.friendlyType && meta.friendlyType !== 'File') {
             fallbackName = `${meta.friendlyType} ${defaultFileWord}`;
+            fallbackDefault = meta.isDefaultName;
           }
 
           attachments.push({
@@ -1229,8 +1470,9 @@
             fileCategory: meta.fileCategory,
             fileType: meta.fileType,
             fileName: fallbackName,
-            isDefaultName: meta.isDefaultName,
-            isTruncatedName: false,
+            isDefaultName: fallbackDefault,
+            isTruncatedName: fallbackTruncated,
+            driveFileId: meta.driveFileId || '',
             domIndex: apiFile.domIndex,
             subIndex: fileSlotIdx,
             turnIndex: apiFile.index
@@ -1253,6 +1495,7 @@
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
           isTruncatedName: info.isTruncatedName,
+          driveFileId: '',
           domIndex: domIndex,
           subIndex: fileSlotIdx,
           turnIndex: turnIndex
@@ -1271,6 +1514,7 @@
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
           isTruncatedName: info.isTruncatedName,
+          driveFileId: '',
           domIndex: domIndex,
           subIndex: fileSlotIdx,
           turnIndex: turnIndex
@@ -1318,6 +1562,8 @@
     CONSTANTS,
     getFriendlyFileType,
     getAttachmentPlaceholder,
+    extractDriveFileIdFromSlot,
+    resolveAttachmentFromDriveMetadata,
     truncateText,
     showTooltip,
     hideTooltip,

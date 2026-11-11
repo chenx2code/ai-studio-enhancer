@@ -665,6 +665,7 @@
             fileName: att.fileName,
             isDefaultName: Boolean(att.isDefaultName),
             isTruncatedName: Boolean(att.isTruncatedName),
+            driveFileId: att.driveFileId || '',
             pureText: fullText,
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             startDomIndex: resolvedStartDomIndex,
@@ -710,6 +711,7 @@
             fileName: att.fileName,
             isDefaultName: Boolean(att.isDefaultName),
             isTruncatedName: Boolean(att.isTruncatedName),
+            driveFileId: att.driveFileId || '',
             pureText: '',
             turnIndex: att.turnIndex !== undefined ? att.turnIndex : primaryIndex,
             startDomIndex: resolvedStartDomIndex,
@@ -767,6 +769,131 @@
     });
   }
 
+  function applyDriveResolvedToCatalogItem(item, driveRec, defaultFileWord) {
+    if (!item || !driveRec || typeof Utils.resolveAttachmentFromDriveMetadata !== 'function') {
+      return false;
+    }
+    const isImage = item.type === 'image';
+    const resolved = Utils.resolveAttachmentFromDriveMetadata(driveRec, isImage ? 'image' : 'file');
+    if (!resolved) return false;
+
+    const driveRank = typeof driveRec.s === 'number' ? driveRec.s : 1;
+    const hasResolvedName = Boolean(resolved.fileName && !resolved.isDefaultName);
+    const hasExplicitMimeType = Boolean(!isImage && resolved.hasExplicitType && resolved.fileType !== 'FILE');
+
+    if (!hasResolvedName && !hasExplicitMimeType) {
+      return false;
+    }
+
+    let shouldApply = false;
+    if (hasResolvedName) {
+      if (item.isDefaultName) {
+        shouldApply = true;
+      } else if (!isImage && item.isTruncatedName && !resolved.isTruncatedName) {
+        shouldApply = true;
+      } else if (
+        driveRank >= 3 &&
+        !resolved.isTruncatedName &&
+        (resolved.fileName !== item.fileName ||
+          (resolved.fileType !== 'FILE' && resolved.fileType !== item.fileType) ||
+          (resolved.fileCategory !== 'file' && resolved.fileCategory !== item.fileCategory))
+      ) {
+        shouldApply = true;
+      } else if (!resolved.isTruncatedName && !isImage && item.fileType === 'FILE' && resolved.fileType !== 'FILE') {
+        shouldApply = true;
+      }
+    } else if (hasExplicitMimeType && item.isDefaultName && item.fileType === 'FILE') {
+      shouldApply = true;
+    }
+
+    if (!shouldApply) return false;
+
+    let nextFileName = item.fileName;
+    let nextFileType = item.fileType;
+    let nextCategory = item.fileCategory;
+    let nextIsDefault = Boolean(item.isDefaultName);
+    let nextIsTruncated = Boolean(item.isTruncatedName);
+
+    if (hasResolvedName) {
+      nextFileName = resolved.fileName;
+      if (isImage) {
+        nextFileType = resolved.fileType || 'IMG';
+        nextCategory = 'image';
+      } else {
+        const keepItemType = resolved.fileType === 'FILE' && item.fileType && item.fileType !== 'FILE' && resolved.fileName === item.fileName;
+        nextFileType = keepItemType ? item.fileType : (resolved.fileType || 'FILE');
+        nextCategory = keepItemType ? (item.fileCategory || 'file') : (resolved.fileCategory || 'file');
+      }
+      nextIsDefault = false;
+      nextIsTruncated = Boolean(resolved.isTruncatedName);
+    } else if (hasExplicitMimeType) {
+      nextFileType = resolved.fileType;
+      nextCategory = resolved.fileCategory;
+      if (resolved.friendlyType && resolved.friendlyType !== 'File') {
+        nextFileName = `${resolved.friendlyType} ${defaultFileWord}`;
+      }
+      nextIsDefault = true;
+      nextIsTruncated = false;
+    }
+
+    const changed =
+      nextFileName !== item.fileName ||
+      nextFileType !== item.fileType ||
+      nextCategory !== item.fileCategory ||
+      nextIsDefault !== Boolean(item.isDefaultName) ||
+      nextIsTruncated !== Boolean(item.isTruncatedName);
+
+    item.fileName = nextFileName;
+    item.fileType = nextFileType;
+    item.fileCategory = nextCategory;
+    item.promptText = `[${nextFileType}] ${nextFileName}`;
+    item.displayText = nextFileName;
+    item.isDefaultName = nextIsDefault;
+    item.isTruncatedName = nextIsTruncated;
+
+    if (!nextIsDefault && nextFileName) {
+      const cacheKey = getAttachmentCacheKey(item.roundIndex, item);
+      attachmentCache.set(cacheKey, {
+        fileName: nextFileName,
+        fileType: nextFileType,
+        fileCategory: nextCategory,
+        isTruncatedName: nextIsTruncated
+      });
+    }
+
+    return changed;
+  }
+
+  function refreshCatalogFromDriveCache(targetDriveId) {
+    const catalogData = State.getCatalogData();
+    if (!catalogData || catalogData.length === 0) return false;
+    if (typeof State.getDriveMetadata !== 'function') return false;
+
+    const defaultFileWord = chrome.i18n.getMessage('fileLabel') || 'File';
+    let updated = false;
+
+    catalogData.forEach((item) => {
+      if (item.type !== 'image' && item.type !== 'file') return;
+      if (!item.driveFileId) return;
+      if (targetDriveId && item.driveFileId !== targetDriveId) return;
+
+      const driveRec = State.getDriveMetadata(item.driveFileId);
+      if (!driveRec) return;
+
+      if (applyDriveResolvedToCatalogItem(item, driveRec, defaultFileWord)) {
+        updated = true;
+      }
+    });
+
+    if (updated) {
+      State.setCatalogData(catalogData);
+      if (catalogVisible) {
+        renderPromptList();
+      }
+    }
+    return updated;
+  }
+
   function enrichCatalogAttachmentNames() {
     const catalogData = State.getCatalogData();
     if (!catalogData || catalogData.length === 0) return false;
@@ -800,6 +927,7 @@
     });
 
     let updated = false;
+    const defaultFileWord = chrome.i18n.getMessage('fileLabel') || 'File';
 
     const imageItems = catalogData.filter(item => item.type === 'image');
     const imageRoundIndices = new Set(imageItems.map(item => item.roundIndex));
@@ -827,7 +955,16 @@
       const isSingleRoundForType = isImage ? singleImageRound : singleFileRound;
 
       if (needsAttachmentEnrichment(item)) {
-        // 1. Check cache first
+        // 1A. Check persistent Drive metadata cache first when Drive File ID is known
+        if (item.driveFileId && typeof State.getDriveMetadata === 'function') {
+          const driveRec = State.getDriveMetadata(item.driveFileId);
+          if (driveRec && applyDriveResolvedToCatalogItem(item, driveRec, defaultFileWord)) {
+            updated = true;
+            if (!needsAttachmentEnrichment(item)) return;
+          }
+        }
+
+        // 1B. Check per-session fallback cache
         if (attachmentCache.has(cacheKey)) {
           const cached = attachmentCache.get(cacheKey);
           const cacheIsBetter =
@@ -964,6 +1101,17 @@
               fileCategory: nextCategory,
               isTruncatedName: Boolean(info.isTruncatedName)
             });
+
+            // Reverse-persist DOM-resolved name into global Drive cache (e.g. when Drive XHR was HTTP-cached)
+            if (item.driveFileId && typeof State.setDriveMetadata === 'function') {
+              State.setDriveMetadata(item.driveFileId, {
+                name: info.fileName,
+                fileExtension: (!info.isTruncatedName && nextFileType && nextFileType !== 'FILE' && nextFileType !== 'IMG')
+                  ? nextFileType.toLowerCase()
+                  : '',
+                source: info.isTruncatedName ? 'dom_truncated' : 'dom_full'
+              });
+            }
             updated = true;
           }
         }
@@ -980,6 +1128,15 @@
             fileType: item.fileType,
             fileCategory: item.fileCategory,
             isTruncatedName: Boolean(item.isTruncatedName)
+          });
+        }
+        if (item.driveFileId && typeof State.setDriveMetadata === 'function') {
+          State.setDriveMetadata(item.driveFileId, {
+            name: item.fileName,
+            fileExtension: (!item.isTruncatedName && item.fileType && item.fileType !== 'FILE' && item.fileType !== 'IMG')
+              ? item.fileType.toLowerCase()
+              : '',
+            source: item.isTruncatedName ? 'dom_truncated' : 'dom_full'
           });
         }
       }
@@ -1082,6 +1239,8 @@
               newData[i].fileType !== oldData[i].fileType ||
               newData[i].fileCategory !== oldData[i].fileCategory ||
               newData[i].isDefaultName !== oldData[i].isDefaultName ||
+              newData[i].isTruncatedName !== oldData[i].isTruncatedName ||
+              newData[i].driveFileId !== oldData[i].driveFileId ||
               newData[i].targetDomIndex !== oldData[i].targetDomIndex ||
               newData[i].domLayoutMode !== oldData[i].domLayoutMode) {
             isDifferent = true;
@@ -2865,6 +3024,7 @@
   global.__AIStudioEnhancer__.Catalog = {
     updateCatalogData,
     enrichCatalogAttachmentNames,
+    refreshCatalogFromDriveCache,
     clearAttachmentCache,
     setupConversationObserver,
     setupWindowListeners,

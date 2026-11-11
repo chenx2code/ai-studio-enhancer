@@ -16,6 +16,25 @@
   const Notification = Enhancer.Notification;
   const PromptHistoryNavigation = Enhancer.PromptHistoryNavigation;
 
+  function isTemporaryChatMode() {
+    const temporaryChatToggle = document.querySelector(Utils.SELECTORS.query.temporaryChatToggle);
+    const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
+    const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
+    return Boolean(isToggleActive || isIndicatorPresent);
+  }
+
+  // Hydrate persistent Drive file metadata cache early at document_start
+  if (typeof State.setDrivePersistenceValidator === 'function') {
+    State.setDrivePersistenceValidator(() => !isTemporaryChatMode());
+  }
+  if (typeof State.initDriveMetadataCache === 'function') {
+    State.initDriveMetadataCache(() => {
+      if (Catalog && typeof Catalog.refreshCatalogFromDriveCache === 'function') {
+        Catalog.refreshCatalogFromDriveCache();
+      }
+    });
+  }
+
   /**
    * PART 1: Inject Interceptor Script
    */
@@ -33,6 +52,25 @@
       const apiKeyword = event.data.apiKeyword;
 
       try {
+        if (apiKeyword === 'DRIVE_FILE_METADATA') {
+          if (data && data.id && (data.name || data.mimeType) && typeof State.setDriveMetadata === 'function') {
+            State.setDriveMetadata(
+              data.id,
+              {
+                name: data.name || '',
+                mimeType: data.mimeType || '',
+                fileExtension: data.fileExtension || '',
+                source: 'drive_api'
+              },
+              { persist: !isTemporaryChatMode() }
+            );
+            if (Catalog && typeof Catalog.refreshCatalogFromDriveCache === 'function') {
+              Catalog.refreshCatalogFromDriveCache(data.id);
+            }
+          }
+          return;
+        }
+
         let turns = null;
         let promptData = null;
 
@@ -84,11 +122,7 @@
     const toolbarRight = document.querySelector('.toolbar-right');
     if (!toolbarRight) return;
 
-    const temporaryChatToggle = document.querySelector(Utils.SELECTORS.query.temporaryChatToggle);
-    const isToggleActive = temporaryChatToggle && temporaryChatToggle.querySelector('button.ms-button-active');
-    const isIndicatorPresent = document.querySelector(Utils.SELECTORS.query.temporaryChatIndicator);
-
-    if (isToggleActive || isIndicatorPresent) {
+    if (isTemporaryChatMode()) {
       if (scrollBtnResizeObserver) {
         scrollBtnResizeObserver.disconnect();
         scrollBtnResizeObserver = null;
