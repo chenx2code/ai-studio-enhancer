@@ -132,7 +132,11 @@
       const attachments = extractRoundAttachments(round.chunks, roundElements, fullText);
 
       // Synchronize with attachmentCache: restore known real names or save newly resolved ones
+      let imageIdxInRound = 0;
       attachments.forEach((att, attIdx) => {
+        if (att.subIndex === undefined && att.type === 'image') {
+          att.subIndex = imageIdxInRound++;
+        }
         const subIndex = att.subIndex !== undefined ? att.subIndex : attIdx;
         const cacheKey = `${roundIdx}_${subIndex}`;
         if (!att.isDefaultName && att.fileName) {
@@ -172,7 +176,9 @@
         });
 
         // Each attachment is indented directly below the prompt text (isTurnRoot: false)
+        let imgCounter = 0;
         attachments.forEach((att, attIdx) => {
+          const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
@@ -192,14 +198,16 @@
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
-            subIndex: att.subIndex !== undefined ? att.subIndex : attIdx,
+            subIndex: subIndex,
             role: 'user'
           });
         });
       } else if (attachments.length > 0) {
         // B. Round has NO text, only attachments: first attachment is turn root
+        let imgCounter = 0;
         attachments.forEach((att, attIdx) => {
           const isRoot = attIdx === 0;
+          const subIndex = att.subIndex !== undefined ? att.subIndex : (att.type === 'image' ? imgCounter++ : attIdx);
           userPrompts.push({
             roundIndex: roundIdx,
             totalRounds: totalRounds,
@@ -219,7 +227,7 @@
             turnElementId: turnElementId,
             promptText: `[${att.fileType}] ${att.fileName}`,
             displayText: att.fileName,
-            subIndex: att.subIndex !== undefined ? att.subIndex : attIdx,
+            subIndex: subIndex,
             role: 'user'
           });
         });
@@ -329,24 +337,21 @@
               (!img.src || (!img.src.includes('googleusercontent.com/a/') && !img.src.includes('watermark.png'))) &&
               (!img.alt || img.alt.toLowerCase() !== 'thinking')
             );
-            targetImg = imgs[subIdx] || imgs[0];
+            targetImg = imgs[subIdx] || null;
           }
 
           // Strategy B: Fallback to liveImages if only one round with images exists or turn-level match was bypassed
           if (!targetImg && liveImages.length > 0) {
             if (singleImageRound) {
-              targetImg = liveImages[subIdx] || liveImages[0];
+              targetImg = liveImages[subIdx] || null;
             } else if (item.pureText) {
-              for (const img of liveImages) {
+              const matchedImages = liveImages.filter(img => {
                 const parentTurn = img.closest(Utils.SELECTORS.query.chatTurn) || img.closest('.chat-turn-container.user');
-                if (parentTurn) {
-                  const turnText = getCleanPromptText(parentTurn);
-                  if (turnText && (turnText.includes(item.pureText) || item.pureText.includes(turnText))) {
-                    targetImg = img;
-                    break;
-                  }
-                }
-              }
+                if (!parentTurn) return false;
+                const turnText = getCleanPromptText(parentTurn);
+                return turnText && (turnText.includes(item.pureText) || item.pureText.includes(turnText));
+              });
+              targetImg = matchedImages[subIdx] || null;
             }
           }
 

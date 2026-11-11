@@ -414,7 +414,7 @@
 
     // Populate image attachments
     if (domImages.length > 0) {
-      domImages.forEach(({ img, domIndex, subIdx }, idx) => {
+      domImages.forEach(({ img, domIndex }, idx) => {
         const info = extractImageInfo(img, idx, totalImages);
         const matchingChunk = chunks.find(c => c && c.domIndex === domIndex);
         const turnIndex = matchingChunk ? matchingChunk.index : (chunks[0] ? (chunks[0].index !== undefined ? chunks[0].index : undefined) : undefined);
@@ -425,7 +425,7 @@
           fileName: info.fileName,
           isDefaultName: info.isDefaultName,
           domIndex: domIndex,
-          subIndex: subIdx,
+          subIndex: idx,
           turnIndex: turnIndex
         });
       });
@@ -442,7 +442,7 @@
             fileName: totalImages > 1 ? `${defaultWord} ${i + 1}` : defaultWord,
             isDefaultName: true,
             domIndex: apiImg.domIndex,
-            subIndex: apiImg.subIdx,
+            subIndex: i,
             turnIndex: apiImg.index
           });
         }
@@ -457,7 +457,7 @@
           fileName: totalImages > 1 ? `${defaultWord} ${idx + 1}` : defaultWord,
           isDefaultName: true,
           domIndex: apiImg.domIndex,
-          subIndex: apiImg.subIdx,
+          subIndex: idx,
           turnIndex: apiImg.index
         });
       });
