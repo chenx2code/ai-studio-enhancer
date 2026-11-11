@@ -102,17 +102,9 @@
    * Query all rendered user chat turn DOM elements.
    */
   function getUserTurnDOMElements() {
-    const userTurnElements = [];
     const Utils = global.__AIStudioEnhancer__.Utils;
-    if (!Utils || !Utils.SELECTORS) return userTurnElements;
-    const chatTurns = document.querySelectorAll(Utils.SELECTORS.query.chatTurn);
-    for (const chatTurn of chatTurns) {
-      const container = chatTurn.querySelector(Utils.SELECTORS.query.chatTurnContainer);
-      if (container && container.classList.contains(Utils.SELECTORS.class.userTurn)) {
-        userTurnElements.push(chatTurn);
-      }
-    }
-    return userTurnElements;
+    if (!Utils || typeof Utils.getUserTurnElements !== 'function') return [];
+    return Utils.getUserTurnElements();
   }
 
   /**
@@ -121,7 +113,7 @@
    * - Single attachment: rendered on its own line (> [Image])
    */
   function formatUserTurn(round, roundElements, isChinese, options = {}) {
-    const Utils = global.__AIStudioEnhancer__.Utils;
+    const Attachments = global.__AIStudioEnhancer__.Attachments;
 
     // 1. Combine all user text in this round
     const textParts = [];
@@ -131,9 +123,9 @@
     });
     const text = textParts.join('\n\n').trim();
 
-    // 2. Extract attachments for this round using Utils
-    const rawAttachments = Utils && Utils.extractRoundAttachments
-      ? Utils.extractRoundAttachments(round.userChunks, roundElements, text)
+    // 2. Extract attachments for this round using Attachments module
+    const rawAttachments = Attachments && Attachments.extractRoundAttachments
+      ? Attachments.extractRoundAttachments(round.userChunks, roundElements, text)
       : [];
 
     const totalImages = rawAttachments.filter(a => a.type === 'image').length;

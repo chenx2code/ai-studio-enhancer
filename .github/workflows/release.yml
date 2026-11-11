@@ -10,11 +10,19 @@ on:
                   - "content.js"
                   - "content-utils.js"
                   - "content-state.js"
+                  - "content-attachments.js"
                   - "content-markdown.js"
+                  - "content-obsidian.js"
+                  - "content-catalog-locator.js"
+                  - "content-catalog-navigator.js"
                   - "content-catalog.js"
+                  - "content-prompt-history-navigation.js"
                   - "content-notification.js"
                   - "interceptor.js"
                   - "styles.css"
+                  - "popup.html"
+                  - "popup.js"
+                  - "popup.css"
                   - "_locales/**"
                   - "icons/**"
       workflow_dispatch:
@@ -57,8 +65,13 @@ jobs:
                             content.js \
                             content-utils.js \
                             content-state.js \
+                            content-attachments.js \
                             content-markdown.js \
+                            content-obsidian.js \
+                            content-catalog-locator.js \
+                            content-catalog-navigator.js \
                             content-catalog.js \
+                            content-prompt-history-navigation.js \
                             content-notification.js \
                             interceptor.js \
                             styles.css \

@@ -3,7 +3,7 @@
 
   // Wait for namespace to be ready (it should be, since files are loaded in order)
   const Enhancer = global.__AIStudioEnhancer__;
-  if (!Enhancer || !Enhancer.Utils || !Enhancer.State || !Enhancer.Markdown || !Enhancer.Catalog || !Enhancer.Notification) {
+  if (!Enhancer || !Enhancer.Utils || !Enhancer.State || !Enhancer.Attachments || !Enhancer.Markdown || !Enhancer.CatalogLocator || !Enhancer.CatalogNavigator || !Enhancer.Catalog || !Enhancer.Notification) {
     console.error('AI Studio Enhancer: Modules failed to load properly.');
     return;
   }
