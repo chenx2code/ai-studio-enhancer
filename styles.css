@@ -189,7 +189,6 @@ body[data-theme="dark"],
   flex-direction: column;
   height: 100%;
   background-color: var(--catalog-container-bg);
-  border-left: 1px solid var(--catalog-border);
   box-sizing: border-box;
   flex-shrink: 0;
   width: 0;
@@ -213,6 +212,8 @@ body[data-theme="dark"],
   height: 100%;
   overflow: hidden;
   width: 300px;
+  box-sizing: border-box;
+  border-left: 1px solid var(--catalog-border);
 }
 
 #catalog-side-panel.no-transition {
