@@ -1102,9 +1102,12 @@
             const catalogPanel = document.getElementById(Utils.SELECTORS.id.catalogPanel);
             if (catalogPanel) {
               catalogPanel.style.setProperty('transition', 'none', 'important');
+              const contentEl = catalogPanel.querySelector('.content-container');
+              if (contentEl) contentEl.style.setProperty('transition', 'none', 'important');
               toggleCatalog(false);
               setTimeout(() => {
                 catalogPanel.style.removeProperty('transition');
+                if (contentEl) contentEl.style.removeProperty('transition');
               }, 50);
             }
           }
