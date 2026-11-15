@@ -26,7 +26,7 @@ A collapsable sidebar catalog to eliminate endless scrolling through multi-turn 
 * **Scroll-to-Bottom Floating Button:** When reviewing past turns, a floating button appears automatically in the lower right. Click it to return immediately to the latest response.
 * **Keyboard Accessibility:** Use the Tab key to cycle through catalog items, and press Enter or Space to jump.
 
-<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
+https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9
 
 ---
 
@@ -43,7 +43,7 @@ Export full conversations into well-structured, standardized `.md` files with su
   * Active Google account email
 * **Compact Attachment Grouping:** Prompts containing multiple images or file attachments are grouped and formatted cleanly per round.
 
-<video src="https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4" controls width="100%"></video>
+https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4
 
 ---
 
@@ -57,7 +57,7 @@ Directly transfer conversations into your local Obsidian vault via the official 
 * **Default Folder and Silent Export:** Check "Set as default folder and do not ask again" in the modal or popup settings to export directly on subsequent clicks.
 * **Target Vault Selection:** Configure a specific Vault name in settings, or leave blank to write into your currently active Obsidian vault.
 
-<video src="https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0" controls width="100%"></video>
+https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0
 
 ---
 
@@ -89,7 +89,7 @@ Click the extension icon in your Chrome toolbar to open the configuration popup 
 * **Notification Control:** Toggle background generation completion alerts.
 * **Obsidian Preferences:** Toggle folder prompt before export, configure default destination folder, and specify target Vault name.
 
-<video src="https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c" controls width="100%"></video>
+https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 
 ---
 
