@@ -26,9 +26,7 @@ A collapsable sidebar catalog to eliminate endless scrolling through multi-turn 
 * **Scroll-to-Bottom Floating Button:** When reviewing past turns, a floating button appears automatically in the lower right. Click it to return immediately to the latest response.
 * **Keyboard Accessibility:** Use the Tab key to cycle through catalog items, and press Enter or Space to jump.
 
-<!-- Media Suggestion: Short Video/GIF (6-8s)
-     Flow: Click toolbar list icon to expand sidebar -> Browse attachment badges -> Click entry to cruise and highlight -> Click floating bottom button to jump back
-     Format: <video src="YOUR_VIDEO_URL" controls width="100%"></video> OR ![Catalog Navigation Demo](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
 
 ---
 
@@ -45,9 +43,7 @@ Export full conversations into well-structured, standardized `.md` files with su
   * Active Google account email
 * **Compact Attachment Grouping:** Prompts containing multiple images or file attachments are grouped and formatted cleanly per round.
 
-<!-- Media Suggestion: Short Video/GIF (4-6s)
-     Flow: Click toolbar download button -> Browser saves .md file -> (Optional) Open in editor to display clean Markdown structure and heading demotion
-     Format: <video src="YOUR_VIDEO_URL" controls width="100%"></video> OR ![Markdown Export Demo](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4" controls width="100%"></video>
 
 ---
 
@@ -61,9 +57,7 @@ Directly transfer conversations into your local Obsidian vault via the official 
 * **Default Folder and Silent Export:** Check "Set as default folder and do not ask again" in the modal or popup settings to export directly on subsequent clicks.
 * **Target Vault Selection:** Configure a specific Vault name in settings, or leave blank to write into your currently active Obsidian vault.
 
-<!-- Media Suggestion: Short Video/GIF (5-8s)
-     Flow: Click toolbar gemstone icon -> Choose destination folder in modal -> Click Export -> Obsidian opens with newly created note
-     Format: <video src="YOUR_VIDEO_URL" controls width="100%"></video> OR ![Obsidian Export Demo](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0" controls width="100%"></video>
 
 ---
 
@@ -75,10 +69,6 @@ Brings the terminal's intuitive `ArrowUp` / `ArrowDown` command recall into the 
 * **Anti-Interference Design:** History mode triggers **only** when your text cursor is at index 0 (the absolute start of the input box). Typing, pressing left/right arrow keys, or clicking the mouse will immediately exit history mode to avoid disrupting multi-line editing.
 * **Draft Preservation:** If you have typed unsubmitted text, it is automatically cached as a draft when entering history mode. Cycle back to the bottom with `ArrowDown` to restore your draft intact.
 
-<!-- Media Suggestion: Animated GIF / Short Video (4-6s)
-     Flow: Cursor at index 0, press ArrowUp to trigger history mode -> Cycle previous prompts -> Press ArrowDown to restore draft
-     Format: <video src="YOUR_VIDEO_URL" controls width="100%"></video> OR ![History Recall Demo](YOUR_GIF_URL) -->
-
 ---
 
 ### 5. Smart Background Desktop Notifications
@@ -88,10 +78,6 @@ Free yourself to switch tabs during long generations. Receive native desktop not
 * **Generation Completion Alert:** Sends an OS desktop alert when generation finishes. Clicking the notification focuses the corresponding tab.
 * **Smart Do-Not-Disturb:** Only triggers when the tab is blurred (e.g. switched tabs, minimized, or working on another monitor). It will never interrupt you while actively looking at the page.
 * **Conversation Title Context:** Includes the current conversation title so you know which task finished when juggling multiple chats.
-
-<!-- Media Suggestion: Real Screenshot or Short Video (3-5s)
-     Content: Native OS desktop notification alert appearing in system corner when away from tab (showing task title)
-     Format: ![Desktop Notification Screenshot](YOUR_IMAGE_URL) OR <video src="YOUR_VIDEO_URL" controls width="100%"></video> -->
 
 ---
 
@@ -103,9 +89,7 @@ Click the extension icon in your Chrome toolbar to open the configuration popup 
 * **Notification Control:** Toggle background generation completion alerts.
 * **Obsidian Preferences:** Toggle folder prompt before export, configure default destination folder, and specify target Vault name.
 
-<!-- Media Suggestion: Real Static Screenshot
-     Content: Settings popup opened by clicking extension icon in Chrome toolbar
-     Format: ![Settings Popup Screenshot](YOUR_IMAGE_URL) -->
+<video src="https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c" controls width="100%"></video>
 
 ---
 

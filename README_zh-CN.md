@@ -26,9 +26,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **一键返回底部：** 向上翻阅历史内容时，右下角自动浮现“跳转到底部”按钮，单次点击立刻回到最新生成的回答处。
 * **键盘无障碍导航：** 支持 Tab 键在目录项间切换，按 Enter 或空格键快速跳转。
 
-<!-- 媒体展示建议: 短录屏视频/GIF (6~8s)
-     演示路径: 点击列表图标展开右侧目录 -> 浏览附件标识 -> 点击目录项平滑滚动高亮定位 -> 点击右下角悬浮按钮瞬间回到底部
-     填入格式: <video src="YOUR_VIDEO_URL" controls width="100%"></video> 或 ![目录导航演示](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
 
 ---
 
@@ -45,9 +43,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
   * 当前 Google 账号邮箱
 * **紧凑附件与多图排版：** 对话中包含的多张图片或文件附件按轮次紧凑归类排版，清晰美观。
 
-<!-- 媒体展示建议: 短录屏视频/GIF (4~6s)
-     演示路径: 点击工具栏下载按钮 -> 浏览器完成 .md 下载 -> (可选) 在编辑器中展示清晰的 Markdown 结构和大纲保护
-     填入格式: <video src="YOUR_VIDEO_URL" controls width="100%"></video> 或 ![Markdown 导出演示](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4" controls width="100%"></video>
 
 ---
 
@@ -61,9 +57,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **默认路径与静默导出：** 支持在弹窗或设置中勾选“设为默认文件夹且不再提醒”，后续点击工具栏图标即可静默完成同步。
 * **指定 Vault 仓库：** 支持在设置中指定目标 Vault 仓库名称，留空则默认写入当前活动的 Vault。
 
-<!-- 媒体展示建议: 短录屏视频/GIF (5~8s)
-     演示路径: 点击工具栏宝石图标 -> 弹窗选择目标文件夹 -> 点击确认导出 -> 自动唤起 Obsidian 并展示新笔记
-     填入格式: <video src="YOUR_VIDEO_URL" controls width="100%"></video> 或 ![Obsidian 导出演示](YOUR_GIF_URL) -->
+<video src="https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0" controls width="100%"></video>
 
 ---
 
@@ -75,10 +69,6 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **智能防误触：** 仅当光标位于输入框最前（索引 0）时按 `ArrowUp` 才会触发历史回溯模式；正常多行编辑、按左右键移动光标或鼠标点击时立刻自动退出，绝不干扰正常打字。
 * **未发送草稿保护：** 若当前输入框已有未发出的内容，进入历史模式时会被自动暂存为草稿；只需按 `ArrowDown` 回到底部即可完美还原草稿。
 
-<!-- 媒体展示建议: 动态图/短视频 (4~6s)
-     演示路径: 输入框光标置首按 ArrowUp 激活历史模式 -> 连续上下翻阅历史提问 -> 按下键回到底部还原草稿
-     填入格式: <video src="YOUR_VIDEO_URL" controls width="100%"></video> 或 ![终端历史回溯演示](YOUR_GIF_URL) -->
-
 ---
 
 ### 5. 智能后台桌面通知
@@ -88,10 +78,6 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **生成完成提醒：** 当模型完成整段回复后发送系统原生通知，点击通知可直接切换回对应标签页。
 * **智能离开检测：** 仅在用户离开当前页面（如切换至其他标签页、最小化窗口或在其他屏幕工作）时才会触发，正视页面时绝不弹窗打扰。
 * **会话标题感知：** 通知卡片包含当前对话的标题，多开任务时一目了然。
-
-<!-- 媒体展示建议: 真实截图或短视频 (3~5s)
-     画面内容: 离开页面时屏幕系统角落弹出的原生桌面通知卡片（包含当前任务标题）
-     填入格式: ![桌面通知截图](YOUR_IMAGE_URL) 或 <video src="YOUR_VIDEO_URL" controls width="100%"></video> -->
 
 ---
 
@@ -103,9 +89,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **后台通知开关：** 随时开启或关闭生成完成桌面通知。
 * **Obsidian 行为配置：** 切换是否在导出前询问目标文件夹、设定默认目标路径及 Obsidian Vault 仓库名称。
 
-<!-- 媒体展示建议: 真实静态截图
-     画面内容: 点击 Chrome 右上角扩展图标展开的设置面板真实截图
-     填入格式: ![设置面板真实截图](YOUR_IMAGE_URL) -->
+<video src="https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c" controls width="100%"></video>
 
 ---
 
