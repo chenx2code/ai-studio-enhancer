@@ -26,7 +26,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **一键返回底部：** 向上翻阅历史内容时，右下角自动浮现“跳转到底部”按钮，单次点击立刻回到最新生成的回答处。
 * **键盘无障碍导航：** 支持 Tab 键在目录项间切换，按 Enter 或空格键快速跳转。
 
-<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
+https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9
 
 ---
 
@@ -43,7 +43,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
   * 当前 Google 账号邮箱
 * **紧凑附件与多图排版：** 对话中包含的多张图片或文件附件按轮次紧凑归类排版，清晰美观。
 
-<video src="https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4" controls width="100%"></video>
+https://github.com/user-attachments/assets/5f37b679-7d8b-43fd-a595-6e12fdd25da4
 
 ---
 
@@ -57,7 +57,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **默认路径与静默导出：** 支持在弹窗或设置中勾选“设为默认文件夹且不再提醒”，后续点击工具栏图标即可静默完成同步。
 * **指定 Vault 仓库：** 支持在设置中指定目标 Vault 仓库名称，留空则默认写入当前活动的 Vault。
 
-<video src="https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0" controls width="100%"></video>
+https://github.com/user-attachments/assets/c9f30f30-e1d1-4c28-a439-1bb026cef5a0
 
 ---
 
@@ -89,7 +89,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **后台通知开关：** 随时开启或关闭生成完成桌面通知。
 * **Obsidian 行为配置：** 切换是否在导出前询问目标文件夹、设定默认目标路径及 Obsidian Vault 仓库名称。
 
-<video src="https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c" controls width="100%"></video>
+https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 
 ---
 
