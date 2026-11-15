@@ -26,7 +26,7 @@ A collapsable sidebar catalog to eliminate endless scrolling through multi-turn 
 * **Scroll-to-Bottom Floating Button:** When reviewing past turns, a floating button appears automatically in the lower right. Click it to return immediately to the latest response.
 * **Keyboard Accessibility:** Use the Tab key to cycle through catalog items, and press Enter or Space to jump.
 
-<video src="https://github.com/user-attachments/assets/b5e6de61-2177-4537-9097-40172d41eea8" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
 
 ---
 

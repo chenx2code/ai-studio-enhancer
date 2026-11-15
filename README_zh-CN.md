@@ -26,7 +26,7 @@ AI Studio Enhancer 是一款专为 Google AI Studio 设计的 Chrome 浏览器�
 * **一键返回底部：** 向上翻阅历史内容时，右下角自动浮现“跳转到底部”按钮，单次点击立刻回到最新生成的回答处。
 * **键盘无障碍导航：** 支持 Tab 键在目录项间切换，按 Enter 或空格键快速跳转。
 
-<video src="https://github.com/user-attachments/assets/b5e6de61-2177-4537-9097-40172d41eea8" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9" controls width="100%"></video>
 
 ---
 
