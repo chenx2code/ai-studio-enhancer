@@ -4,7 +4,7 @@
     "description": "The name of the extension."
   },
   "extensionDescription": {
-    "message": "Enhances Google AI Studio with one-click Markdown download and a conversation catalog for easy navigation.",
+    "message": "Boost Google AI Studio with one-click Obsidian & Markdown export, chat outline, prompt history, and desktop notifications.",
     "description": "The description of the extension."
   },
   "tooltipDownloadMarkdown": {
