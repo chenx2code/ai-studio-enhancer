@@ -127,10 +127,6 @@ This extension currently supports **Google Chrome** and can be loaded via Develo
 * **Why does the export button not respond or say conversation not saved?**
   Google AI Studio automatically syncs conversation data to Google Drive in real time. This extension relies on the internal data stream triggered by this auto-save mechanism to capture the complete, lossless conversation history. If you just sent a prompt, wait 1–3 seconds until the cloud save indicator appears near the top (e.g. "Saved to Drive" / cloud icon) before exporting or refreshing the catalog.
 
-  <!-- Media Suggestion: Real Static Screenshot
-       Content: Google AI Studio top bar title area showing the "Saved to Drive" cloud status indicator
-       Format: ![Cloud Save Status Indicator](YOUR_IMAGE_URL) -->
-
 * **Why does "Export to Obsidian" not open Obsidian?**
   1-Click Obsidian export requires the Obsidian desktop application installed on your machine. On the first export, Chrome may prompt for permission to open the `obsidian://` protocol; click "Allow".
 * **Browser Compatibility:**
