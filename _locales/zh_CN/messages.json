@@ -4,7 +4,7 @@
     "description": "插件的名称。"
   },
   "extensionDescription": {
-    "message": "增强 Google AI Studio 使用体验，一键下载完整对话为 Markdown 格式，并通过对话目录在长篇会话中快速跳转和定位。",
+    "message": "提升 Google AI Studio 效率：Markdown 导出与 Obsidian 一键同步、侧边栏对话目录、终端式提问历史回溯及后台桌面通知。",
     "description": "插件的描述。"
   },
   "tooltipDownloadMarkdown": {
