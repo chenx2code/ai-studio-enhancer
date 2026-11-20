@@ -28,16 +28,16 @@
     "description": "Success message after the conversation is copied to the clipboard."
   },
   "tooltipCatalog": {
-    "message": "Toggle conversation catalog",
-    "description": "The tooltip text for the catalog toggle button."
+    "message": "Toggle conversation outline",
+    "description": "The tooltip text for the outline toggle button."
   },
   "catalogHeader": {
-    "message": "Conversation Catalog",
-    "description": "The header text for the catalog panel."
+    "message": "Conversation Outline",
+    "description": "The header text for the outline panel."
   },
   "catalogEmptyState": {
     "message": "No conversation yet",
-    "description": "Message displayed when the catalog is empty or no user prompts are available."
+    "description": "Message displayed when the outline is empty or no user prompts are available."
   },
   "catalogEmptyTitle": {
     "message": "No conversation yet",
@@ -48,8 +48,8 @@
     "description": "Empty state description."
   },
   "closeCatalogTitle": {
-    "message": "Close catalog",
-    "description": "Tooltip text for closing the catalog panel."
+    "message": "Close outline",
+    "description": "Tooltip text for closing the outline panel."
   },
   "imageLabel": {
     "message": "Image",
