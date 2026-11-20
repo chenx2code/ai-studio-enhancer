@@ -10,21 +10,21 @@
 
 ---
 
-**AI Studio Enhancer** is a Chrome browser extension built for Google AI Studio. It delivers a floating sidebar catalog for long conversation navigation, structured Markdown export, seamless 1-click Obsidian sync, terminal-like prompt history recall, and background completion alerts—elevating your conversation archiving, knowledge management, and daily workflows.
+**AI Studio Enhancer** is a Chrome browser extension built for Google AI Studio. It delivers a floating sidebar outline for long conversation navigation, structured Markdown export, seamless 1-click Obsidian sync, terminal-like prompt history recall, and background completion alerts—elevating your conversation archiving, knowledge management, and daily workflows.
 
 ---
 
 ## Features
 
-### 1. Conversation Catalog and Quick Navigation
+### 1. Conversation Outline and Quick Navigation
 
-A collapsable sidebar catalog to eliminate endless scrolling through multi-turn chats.
+A collapsable sidebar outline to eliminate endless scrolling through multi-turn chats.
 
-* **Sidebar Catalog Panel:** Click the list icon in the toolbar to slide out the catalog, displaying chronological user prompt previews.
+* **Sidebar Outline Panel:** Click the list icon in the toolbar to slide out the outline, displaying chronological user prompt previews.
 * **Intelligent Attachment Badges:** Accurately identifies and badges file attachments, including `[Image]`, `[PDF File]`, `[Markdown File]`, `[Audio File]`, `[YouTube Video]`, and generic documents `[Document]`.
-* **Smooth High-Speed Cruise & Stabilization:** Click any catalog entry to smoothly scroll to the target turn with blue highlight feedback and landing stabilization.
+* **Smooth High-Speed Cruise & Stabilization:** Click any outline entry to smoothly scroll to the target turn with blue highlight feedback and landing stabilization.
 * **Scroll-to-Bottom Floating Button:** When reviewing past turns, a floating button appears automatically in the lower right. Click it to return immediately to the latest response.
-* **Keyboard Accessibility:** Use the Tab key to cycle through catalog items, and press Enter or Space to jump.
+* **Keyboard Accessibility:** Use the Tab key to cycle through outline items, and press Enter or Space to jump.
 
 https://github.com/user-attachments/assets/ea16fde3-ffd6-4485-937b-f260c0f063e9
 
@@ -125,14 +125,14 @@ This extension currently supports **Google Chrome** and can be loaded via Develo
 ## FAQ & Known Limitations
 
 * **Why does the export button not respond or say conversation not saved?**
-  Google AI Studio automatically syncs conversation data to Google Drive in real time. This extension relies on the internal data stream triggered by this auto-save mechanism to capture the complete, lossless conversation history. If you just sent a prompt, wait 1–3 seconds until the cloud save indicator appears near the top (e.g. "Saved to Drive" / cloud icon) before exporting or refreshing the catalog.
+  Google AI Studio automatically syncs conversation data to Google Drive in real time. This extension relies on the internal data stream triggered by this auto-save mechanism to capture the complete, lossless conversation history. If you just sent a prompt, wait 1–3 seconds until the cloud save indicator appears near the top (e.g. "Saved to Drive" / cloud icon) before exporting or refreshing the outline.
 
 * **Why does "Export to Obsidian" not open Obsidian?**
   1-Click Obsidian export requires the Obsidian desktop application installed on your machine. On the first export, Chrome may prompt for permission to open the `obsidian://` protocol; click "Allow".
 * **Browser Compatibility:**
   Currently tailored and tested specifically for Google Chrome. Official compatibility for Edge, Firefox, Safari, or other browsers is not yet supported.
 * **Google AI Studio Interface Changes:**
-  The extension depends on Google AI Studio's DOM structure and network responses. Major UI redesigns by Google may affect button placement or catalog parsing. If this occurs, please open an Issue and we will update promptly.
+  The extension depends on Google AI Studio's DOM structure and network responses. Major UI redesigns by Google may affect button placement or outline parsing. If this occurs, please open an Issue and we will update promptly.
 
 ---
 
