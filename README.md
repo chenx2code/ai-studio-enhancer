@@ -4,7 +4,9 @@
   <p><b>Browser Extension for Google AI Studio</b></p>
   <p><a href="README_zh-CN.md">简体中文</a> · English</p>
   <p>
+    <a href="https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo"><img src="https://img.shields.io/badge/Chrome_Web_Store-Available-blue?logo=googlechrome&logoColor=white" alt="Chrome Web Store" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
+    <a href="PRIVACY.md"><img src="https://img.shields.io/badge/Privacy_Policy-Read-lightgrey.svg" alt="Privacy Policy" /></a>
   </p>
 </div>
 
@@ -95,9 +97,21 @@ https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 
 ## Installation
 
-This extension currently supports **Google Chrome** and can be loaded via Developer Mode.
+This extension supports **Google Chrome** and other Chromium-based browsers (e.g. Microsoft Edge, Brave).
 
-### Method 1: Install from Release (Recommended)
+### Method 1: Chrome Web Store (Recommended)
+
+The easiest way to install, offering **automatic background updates** without needing Developer Mode:
+
+1. Visit the [AI Studio Enhancer Chrome Web Store Page](https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo).
+2. Click **"Add to Chrome"**.
+3. Click the Extensions (puzzle piece) icon in your toolbar and pin **AI Studio Enhancer** for quick access.
+
+---
+
+### Method 2: Manual Installation from Release (Offline)
+
+If you cannot access the Chrome Web Store or prefer installing manually:
 
 1. **Download the ZIP Archive:**
    Go to the [Releases page](https://github.com/chenx2code/ai-studio-enhancer/releases), locate the latest release, and download `ai-studio-enhancer-vX.X.X.zip`.
@@ -111,14 +125,16 @@ This extension currently supports **Google Chrome** and can be loaded via Develo
 4. **Pin to Toolbar:**
    Click the puzzle icon (Extensions) in Chrome's toolbar, locate **AI Studio Enhancer**, and click the pin icon to keep settings readily accessible.
 
-### Method 2: Load from Source Code (Developers)
+---
+
+### Method 3: Load from Source Code (Developers)
 
 1. **Clone the Repository:**
    ```bash
    git clone https://github.com/chenx2code/ai-studio-enhancer.git
    ```
 2. **Load Extension:**
-   Follow step 3 from Method 1 to load the cloned root directory in `chrome://extensions/`.
+   Follow step 3 from Method 2 to load the cloned root directory in `chrome://extensions/`.
 
 ---
 

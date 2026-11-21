@@ -4,7 +4,9 @@
   <p><b>Google AI Studio 增强浏览器扩展</b></p>
   <p>简体中文 · <a href="README.md">English</a></p>
   <p>
+    <a href="https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo"><img src="https://img.shields.io/badge/Chrome_Web_Store-Available-blue?logo=googlechrome&logoColor=white" alt="Chrome Web Store" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
+    <a href="PRIVACY.md"><img src="https://img.shields.io/badge/Privacy_Policy-Read-lightgrey.svg" alt="Privacy Policy" /></a>
   </p>
 </div>
 
@@ -95,9 +97,21 @@ https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 
 ## 安装方法
 
-本扩展目前仅支持 **Google Chrome** 浏览器，通过开发者模式手动加载。
+本扩展支持 **Google Chrome** 及主流 Chromium 内核浏览器（如 Microsoft Edge、Brave 等）。
 
-### 方法一：从 Release 安装（推荐）
+### 方法一：从 Chrome Web Store 安装（强烈推荐）
+
+最便捷的安装方式，无需开启开发者模式，且后续支持跟随商店**自动静默更新**：
+
+1. 前往 [Chrome 网上应用店 - AI Studio Enhancer](https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo)。
+2. 点击 **“添加至 Chrome”** (Add to Chrome)。
+3. 在浏览器工具栏中点击拼图图标（扩展程序），找到 **AI Studio Enhancer** 并点击图钉固定，方便随时查看状态与配置。
+
+---
+
+### 方法二：从 Release 离线安装（无法访问商店时）
+
+如果网络环境无法直接访问 Chrome 应用店，可下载离线包手动安装：
 
 1. **下载 ZIP 压缩包：**
    访问本项目的 [Releases 页面](https://github.com/chenx2code/ai-studio-enhancer/releases)，找到最新版本并下载 `ai-studio-enhancer-vX.X.X.zip`。
@@ -111,14 +125,16 @@ https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 4. **固定到工具栏：**
    点击 Chrome 右上角的拼图图标（扩展管理），找到 **AI Studio Enhancer** 并点击图钉图标，将其固定在浏览器工具栏以便随时打开设置。
 
-### 方法二：从源码加载（开发者）
+---
+
+### 方法三：从源码加载（开发者）
 
 1. **克隆仓库：**
    ```bash
    git clone https://github.com/chenx2code/ai-studio-enhancer.git
    ```
 2. **加载扩展：**
-   参照“方法一”中的步骤 3，在 `chrome://extensions/` 中选择克隆下来的项目根目录即可。
+   参照“方法二”中的步骤 3，在 `chrome://extensions/` 中选择克隆下来的项目根目录即可。
 
 ---
 
