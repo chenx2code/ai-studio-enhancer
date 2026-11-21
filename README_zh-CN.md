@@ -99,7 +99,7 @@ https://github.com/user-attachments/assets/89bf6814-e9eb-4359-b51a-203464d3181c
 
 本扩展支持 **Google Chrome** 及主流 Chromium 内核浏览器（如 Microsoft Edge、Brave 等）。
 
-### 方法一：从 Chrome Web Store 安装（强烈推荐）
+### 方法一：从 Chrome Web Store 安装（推荐）
 
 最便捷的安装方式，无需开启开发者模式，且后续支持跟随商店**自动静默更新**：
 
