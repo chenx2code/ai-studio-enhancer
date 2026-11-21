@@ -4,7 +4,7 @@
   <p><b>Browser Extension for Google AI Studio</b></p>
   <p><a href="README_zh-CN.md">简体中文</a> · English</p>
   <p>
-    <a href="https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo"><img src="https://img.shields.io/badge/Chrome_Web_Store-Available-blue?logo=googlechrome&logoColor=white" alt="Chrome Web Store" /></a>
+    <a href="https://chromewebstore.google.com/detail/ilomdejhlbkbfmmlakdgbnhbdjgdobmo"><img src="https://img.shields.io/chrome-web-store/v/ilomdejhlbkbfmmlakdgbnhbdjgdobmo?logo=googlechrome&logoColor=white" alt="Chrome Web Store Version" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
     <a href="PRIVACY.md"><img src="https://img.shields.io/badge/Privacy_Policy-Read-lightgrey.svg" alt="Privacy Policy" /></a>
   </p>
